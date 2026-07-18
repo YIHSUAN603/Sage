@@ -1,0 +1,125 @@
+// In-memory SageIpc for Node tests and offline frontend development.
+// Only `import type` from the contract — zero runtime dependencies — so it
+// runs under `node --experimental-strip-types` without a bundler.
+import type {
+  ActiveWindow,
+  ChatRequest,
+  SageIpc,
+  Settings,
+  StreamEvent,
+} from "./contract.ts";
+import { DEFAULT_SETTINGS } from "./contract.ts";
+
+export interface MockIpcOptions {
+  /** One StreamEvent sequence per chatStream call, consumed in order. */
+  script?: StreamEvent[][];
+  /** Fake filesystem for toolReadFile. */
+  files?: Record<string, string>;
+  /** Initial settings (merged over DEFAULT_SETTINGS). */
+  settings?: Partial<Settings>;
+  /** activeWindow results, cycled per call. Defaults to [null]. */
+  windows?: (ActiveWindow | null)[];
+  /** Data URL returned by captureScreen. */
+  screenshot?: string;
+}
+
+export interface MockIpc extends SageIpc {
+  /** Every call made, in order, for assertions. */
+  calls: { command: string; args?: unknown }[];
+  /** The requests chatStream received, in order. */
+  chatRequests: ChatRequest[];
+}
+
+/** A stream that answers "hi" — with the tool_call arguments sliced across
+ * deltas the way OpenRouter actually sends them (exercises S2.1 accumulation). */
+export const DEFAULT_SCRIPT: StreamEvent[][] = [
+  [
+    { type: "delta", content: "Let me look at that file." },
+    {
+      type: "delta",
+      tool_calls: [
+        { index: 0, id: "call_1", function: { name: "read_file", arguments: "" } },
+      ],
+    },
+    { type: "delta", tool_calls: [{ index: 0, function: { arguments: '{"pa' } }] },
+    { type: "delta", tool_calls: [{ index: 0, function: { arguments: 'th":"/tmp' } }] },
+    { type: "delta", tool_calls: [{ index: 0, function: { arguments: '/a.txt"}' } }] },
+    { type: "done", finish_reason: "tool_calls" },
+  ],
+  [
+    { type: "delta", content: "The file says " },
+    { type: "delta", content: "hello." },
+    { type: "done", finish_reason: "stop" },
+  ],
+];
+
+// Smallest useful stand-in for a real capture; content never matters in tests.
+const TINY_JPEG_DATA_URL =
+  "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+
+export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
+  const script = options.script ?? DEFAULT_SCRIPT;
+  const files = { ...(options.files ?? {}) };
+  const windows = options.windows ?? [null];
+  const screenshot = options.screenshot ?? TINY_JPEG_DATA_URL;
+  let settings: Settings = { ...DEFAULT_SETTINGS, ...(options.settings ?? {}) };
+  let streamCall = 0;
+  let windowCall = 0;
+
+  const calls: MockIpc["calls"] = [];
+  const chatRequests: ChatRequest[] = [];
+
+  return {
+    calls,
+    chatRequests,
+
+    async chatStream(req, onEvent, signal) {
+      calls.push({ command: "chat_stream", args: req });
+      chatRequests.push(req);
+      const events = script[streamCall % script.length];
+      streamCall += 1;
+      for (const event of events) {
+        if (signal?.aborted) return;
+        onEvent(event);
+        // Yield between events so consumers see them asynchronously, like a
+        // real SSE stream, and abort can land mid-stream.
+        await Promise.resolve();
+      }
+    },
+
+    async toolReadFile(path) {
+      calls.push({ command: "tool_read_file", args: path });
+      if (!(path in files)) {
+        // Same message shape as tools.rs
+        throw new Error(`file not found: ${path}`);
+      }
+      return files[path];
+    },
+
+    async getSettings() {
+      calls.push({ command: "get_settings" });
+      return { ...settings };
+    },
+
+    async setSettings(next) {
+      calls.push({ command: "set_settings", args: next });
+      settings = { ...next };
+    },
+
+    async captureScreen() {
+      calls.push({ command: "capture_screen" });
+      // Mirrors capture.rs: refuse outright when observation is off.
+      if (!settings.observe_enabled) {
+        throw new Error("observation disabled");
+      }
+      return screenshot;
+    },
+
+    async activeWindow() {
+      calls.push({ command: "active_window" });
+      const win = windows[windowCall % windows.length];
+      windowCall += 1;
+      return win === null ? null : { ...win };
+    },
+  };
+}

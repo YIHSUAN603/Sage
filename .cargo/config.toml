@@ -1,0 +1,5 @@
+# Redirect Cargo's build output off the exFAT volume.
+# The Transcend volume is exFAT; macOS scatters `._*` AppleDouble files there,
+# which crash Tauri's build script. Building to an APFS target dir avoids it.
+[build]
+target-dir = "/Users/arieschao/.sage-target"
