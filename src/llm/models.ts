@@ -7,8 +7,8 @@ export const OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models";
 export interface OpenRouterModel {
   id: string;
   name: string;
-  /** Prices are strings; "0" means free. */
-  pricing?: { prompt?: string; completion?: string };
+  /** Prices are strings; a model is free only when every price is "0". */
+  pricing?: Record<string, string | undefined>;
   supported_parameters?: string[];
   architecture?: { input_modalities?: string[] };
 }
@@ -29,7 +29,11 @@ export type FetchLike = (url: string) => Promise<{
 }>;
 
 function isFree(model: OpenRouterModel): boolean {
-  return model.pricing?.prompt === "0";
+  // prompt 免費不等於全免費——completion/request/image 等任何一項計費就不算。
+  const pricing = model.pricing;
+  if (!pricing) return false;
+  const prices = Object.values(pricing).filter((v): v is string => v != null);
+  return prices.length > 0 && prices.every((v) => Number(v) === 0);
 }
 
 function supportsTools(model: OpenRouterModel): boolean {

@@ -42,6 +42,13 @@ const CATALOG: OpenRouterModel[] = [
     name: "Free Plain",
     pricing: { prompt: "0" },
   },
+  {
+    id: "f/free-prompt-paid-completion",
+    name: "Free Prompt Paid Completion",
+    pricing: { prompt: "0", completion: "0.000001" },
+    supported_parameters: ["tools"],
+    architecture: { input_modalities: ["text", "image"] },
+  },
 ];
 
 function fakeFetch(
@@ -82,6 +89,8 @@ test("models missing pricing/capability fields are treated as not matching", asy
   for (const list of [tools, vision]) {
     assert.ok(!list.some((m) => m.id === "e/free-plain"));
     assert.ok(!list.some((m) => m.id === "d/paid-both"));
+    // prompt 免費但 completion 計費 → 不是真免費
+    assert.ok(!list.some((m) => m.id === "f/free-prompt-paid-completion"));
   }
 });
 
