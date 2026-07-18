@@ -10,11 +10,36 @@
     "frontendDist": "../dist"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
-        "title": "sage",
-        "width": 800,
-        "height": 600
+        "label": "avatar",
+        "title": "Sage",
+        "url": "index.html?window=avatar",
+        "width": 120,
+        "height": 124,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "acceptFirstMouse": true
+      },
+      {
+        "label": "chat",
+        "title": "Sage Chat",
+        "url": "index.html?window=chat",
+        "width": 360,
+        "height": 480,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "visible": false,
+        "acceptFirstMouse": true
       }
     ],
     "security": {
