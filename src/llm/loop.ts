@@ -27,6 +27,8 @@ export interface AgentLoopOptions {
   tools: ToolRegistry;
   /** Called with each streamed content fragment, for live rendering. */
   onDelta?(text: string): void;
+  /** Called as each assistant / tool message is appended to the history. */
+  onMessage?(message: ChatMessage): void;
   /** Aborts streaming and stops the loop after the current round. */
   signal?: AbortSignal;
   /** Safety cap on completion rounds. Default 8. */
@@ -38,7 +40,7 @@ export interface AgentLoopOptions {
  * every assistant and role:"tool" message produced along the way.
  */
 export async function runAgentLoop(opts: AgentLoopOptions): Promise<ChatMessage[]> {
-  const { ipc, model, tools, onDelta, signal } = opts;
+  const { ipc, model, tools, onDelta, onMessage, signal } = opts;
   const maxRounds = opts.maxRounds ?? 8;
   const messages = [...opts.messages];
   const toolDefs = tools.toToolDefs();
@@ -64,16 +66,19 @@ export async function runAgentLoop(opts: AgentLoopOptions): Promise<ChatMessage[
     if (error) throw new AgentLoopError(error);
 
     messages.push(message);
+    onMessage?.(message);
     // Converged: nothing left to execute, or the user aborted mid-stream.
     if (!message.tool_calls || message.tool_calls.length === 0) break;
     if (signal?.aborted) break;
 
     for (const call of message.tool_calls) {
-      messages.push({
+      const toolMessage: ChatMessage = {
         role: "tool",
         content: await executeToolCall(tools, call.function.name, call.function.arguments),
         tool_call_id: call.id,
-      });
+      };
+      messages.push(toolMessage);
+      onMessage?.(toolMessage);
     }
   }
 

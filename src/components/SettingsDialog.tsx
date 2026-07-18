@@ -6,9 +6,9 @@ import type { Settings } from "../ipc/contract.ts";
 import { useSettingsStore } from "../store/settings.ts";
 
 /**
- * 模型清單載入介面 — T2 軌的 llm/models.ts（S2.2）完成後接上
- * fetchFreeToolModels / fetchFreeVisionModels。佔位實作回空陣列，
- * 此時欄位退化成「手填 model id 的 text input + datalist」。
+ * 模型清單載入介面（llm/models.ts 的 fetchFreeToolModels /
+ * fetchFreeVisionModels）。載入失敗或回空陣列時，欄位退化成
+ * 「手填 model id 的 text input + datalist」。
  */
 export interface ModelOption {
   id: string;
@@ -22,9 +22,9 @@ const loadModelsPlaceholder: LoadModels = async () => [];
 interface Props {
   open: boolean;
   onClose: () => void;
-  /** TODO(T2 整合): 傳入免費且支援 tools 的模型清單。 */
+  /** 免費且支援 tools 的模型清單。 */
   loadChatModels?: LoadModels;
-  /** TODO(T2 整合): 傳入免費且支援 image 輸入的模型清單。 */
+  /** 免費且支援 image 輸入的模型清單。 */
   loadObserveModels?: LoadModels;
 }
 

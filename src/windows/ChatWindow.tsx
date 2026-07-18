@@ -5,10 +5,16 @@ import { useEffect, useState } from "react";
 import { Composer } from "../components/Composer.tsx";
 import { MessageList } from "../components/MessageList.tsx";
 import { SettingsDialog } from "../components/SettingsDialog.tsx";
+import { fetchFreeToolModels, fetchFreeVisionModels } from "../llm/models.ts";
 import { hasTauri } from "../runtime.ts";
 import { avatarMood, MOOD_EVENT, useChatStore } from "../store/chat.ts";
 import { hasApiKey, useSettingsStore } from "../store/settings.ts";
 import "./chat.css";
+
+// Module-level so the references stay stable across renders (the dialog's
+// load effect depends on them).
+const loadChatModels = () => fetchFreeToolModels();
+const loadObserveModels = () => fetchFreeVisionModels();
 
 export function ChatWindow() {
   const messages = useChatStore((s) => s.messages);
@@ -92,6 +98,8 @@ export function ChatWindow() {
         <SettingsDialog
           open={settingsOpen}
           onClose={() => setSettingsOpen(false)}
+          loadChatModels={loadChatModels}
+          loadObserveModels={loadObserveModels}
         />
       </div>
     </div>
