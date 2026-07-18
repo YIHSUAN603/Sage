@@ -39,7 +39,14 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (!trimmed || get().streaming) return;
 
     const ipc = requireIpc();
-    const model = useSettingsStore.getState().settings.chat_model;
+    const model = useSettingsStore.getState().settings.chat_model.trim();
+    if (!model) {
+      set({
+        error:
+          "尚未選擇聊天模型——請開啟設定（⚙），在「聊天模型」挑一個或填入 OpenRouter model id。",
+      });
+      return;
+    }
     const messages: ChatMessage[] = [
       ...get().messages,
       { role: "user", content: trimmed },

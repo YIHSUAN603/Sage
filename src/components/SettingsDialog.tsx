@@ -19,6 +19,12 @@ export type LoadModels = () => Promise<ModelOption[]>;
 
 const loadModelsPlaceholder: LoadModels = async () => [];
 
+function sortRecommendedFirst(models: ModelOption[]): ModelOption[] {
+  return [...models].sort(
+    (a, b) => Number(b.recommended ?? false) - Number(a.recommended ?? false),
+  );
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -42,16 +48,18 @@ export function SettingsDialog({
   const [draft, setDraft] = useState<Settings>(settings);
   const [chatModels, setChatModels] = useState<ModelOption[]>([]);
   const [observeModels, setObserveModels] = useState<ModelOption[]>([]);
+  const [modelsError, setModelsError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setDraft(useSettingsStore.getState().settings);
+    setModelsError(false);
     let cancelled = false;
     loadChatModels()
-      .then((models) => !cancelled && setChatModels(models))
-      .catch(() => {});
+      .then((models) => !cancelled && setChatModels(sortRecommendedFirst(models)))
+      .catch(() => !cancelled && setModelsError(true));
     loadObserveModels()
-      .then((models) => !cancelled && setObserveModels(models))
+      .then((models) => !cancelled && setObserveModels(sortRecommendedFirst(models)))
       .catch(() => {});
     return () => {
       cancelled = true;
@@ -89,14 +97,20 @@ export function SettingsDialog({
         </label>
 
         <label className="field">
-          <span>聊天模型（需支援 tools）</span>
+          <span>聊天模型（必填，需支援 tools）</span>
           <input
             type="text"
             list="chat-model-options"
             value={draft.chat_model}
-            placeholder="例：qwen/qwen3-…:free"
+            placeholder="點一下從清單挑選，或直接填 model id"
             onChange={(e) => patch({ chat_model: e.currentTarget.value })}
           />
+          {modelsError && (
+            <span className="field-hint">
+              模型清單載入失敗——請自行填入 OpenRouter model id（例：
+              google/gemma-4-26b-a4b-it:free）。
+            </span>
+          )}
           <datalist id="chat-model-options">
             {chatModels.map((m) => (
               <option key={m.id} value={m.id}>

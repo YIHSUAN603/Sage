@@ -435,6 +435,11 @@
   color: var(--error-fg);
 }
 
+.field-hint {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;
