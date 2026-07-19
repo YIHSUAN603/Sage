@@ -2,13 +2,22 @@
 // next to the avatar. Streams live via the chat store and broadcasts the
 // avatar mood over a Tauri event so the avatar webview can animate.
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Composer } from "../components/Composer.tsx";
 import { MessageList } from "../components/MessageList.tsx";
 import { SettingsDialog } from "../components/SettingsDialog.tsx";
+import {
+  BUBBLE_OPEN_EVENT,
+  CONTEXT_EVENT,
+  type BubbleOpenEventPayload,
+  type ContextEventPayload,
+} from "../events.ts";
 import { fetchFreeToolModels, fetchFreeVisionModels } from "../llm/models.ts";
 import { hasTauri } from "../runtime.ts";
 import { avatarMood, MOOD_EVENT, useChatStore } from "../store/chat.ts";
+import { useObservationStore } from "../store/observation.ts";
 import { hasApiKey, useSettingsStore } from "../store/settings.ts";
+import { useSettingsSync } from "../store/settingsSync.ts";
 import "./chat.css";
 
 // Module-level so the references stay stable across renders (the dialog's
@@ -17,6 +26,7 @@ const loadChatModels = () => fetchFreeToolModels();
 const loadObserveModels = () => fetchFreeVisionModels();
 
 export function ChatWindow() {
+  const { t } = useTranslation();
   const messages = useChatStore((s) => s.messages);
   const streaming = useChatStore((s) => s.streaming);
   const partial = useChatStore((s) => s.partial);
@@ -38,6 +48,40 @@ export function ChatWindow() {
     })();
   }, [mood]);
 
+  // Reload settings when another window saves them (observation switch etc.).
+  useSettingsSync();
+
+  // S5.4 — mirror context samples broadcast by the avatar window (so send()
+  // can inject them) and turn clicked bubbles into the assistant's opener.
+  useEffect(() => {
+    if (!hasTauri()) return;
+    let disposed = false;
+    const offs: (() => void)[] = [];
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const offContext = await listen<ContextEventPayload>(
+        CONTEXT_EVENT,
+        (event) => {
+          useObservationStore
+            .getState()
+            .pushContext(event.payload.window, event.payload.at);
+        },
+      );
+      const offBubble = await listen<BubbleOpenEventPayload>(
+        BUBBLE_OPEN_EVENT,
+        (event) => {
+          useChatStore.getState().openFromBubble(event.payload.text);
+        },
+      );
+      offs.push(offContext, offBubble);
+      if (disposed) offs.forEach((off) => off());
+    })();
+    return () => {
+      disposed = true;
+      offs.forEach((off) => off());
+    };
+  }, []);
+
   const hideWindow = async () => {
     if (!hasTauri()) return;
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -55,8 +99,8 @@ export function ChatWindow() {
           <button
             type="button"
             className="chat-head-btn"
-            title="設定"
-            aria-label="設定"
+            title={t("chat.settingsTitle")}
+            aria-label={t("chat.settingsTitle")}
             onClick={() => setSettingsOpen(true)}
           >
             ⚙
@@ -64,8 +108,8 @@ export function ChatWindow() {
           <button
             type="button"
             className="chat-head-btn"
-            title="收起"
-            aria-label="收起"
+            title={t("chat.hide")}
+            aria-label={t("chat.hide")}
             onClick={() => void hideWindow()}
           >
             ×
@@ -80,7 +124,7 @@ export function ChatWindow() {
             <button
               type="button"
               onClick={clearError}
-              aria-label="關閉錯誤訊息"
+              aria-label={t("chat.dismissError")}
             >
               ×
             </button>

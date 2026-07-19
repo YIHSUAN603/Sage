@@ -27,6 +27,22 @@
         "acceptFirstMouse": true
       },
       {
+        "label": "bubble",
+        "title": "Sage Bubble",
+        "url": "index.html?window=bubble",
+        "width": 300,
+        "height": 110,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "shadow": false,
+        "visible": false,
+        "focus": false,
+        "acceptFirstMouse": true
+      },
+      {
         "label": "chat",
         "title": "Sage Chat",
         "url": "index.html?window=chat",

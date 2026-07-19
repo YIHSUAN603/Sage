@@ -1,18 +1,83 @@
-// S4.2 — Toggle the chat bubble from the avatar: show it snapped next to
-// the avatar's current position (flipping sides near the screen edge), or
-// hide it when it is already visible.
+// S4.2 / S5.4 — Position companion windows next to the avatar and show them.
+// The anchor is always the `avatar` window (looked up by label, so any webview
+// — avatar, bubble — can call these), flipping sides near the screen edge.
 import { hasTauri } from "../runtime.ts";
 
 const GAP = 12;
+
+type SnapSide = "right" | "top";
+
+/** Snap `label` next to the avatar's current position and show it. */
+async function showNextToAvatar(label: string, side: SnapSide, focus: boolean) {
+  const { Window, PhysicalPosition, currentMonitor } = await import(
+    "@tauri-apps/api/window"
+  );
+
+  const target = await Window.getByLabel(label);
+  const avatar = await Window.getByLabel("avatar");
+  if (!target || !avatar) return;
+
+  const [avatarPos, avatarSize, targetSize, monitor] = await Promise.all([
+    avatar.outerPosition(),
+    avatar.outerSize(),
+    target.outerSize(),
+    currentMonitor(),
+  ]);
+
+  let x: number;
+  let y: number;
+  if (side === "right") {
+    // To the right of the avatar, bottoms roughly aligned.
+    x = avatarPos.x + avatarSize.width + GAP;
+    y = avatarPos.y + avatarSize.height - targetSize.height;
+  } else {
+    // Above the avatar, horizontally centered.
+    x = avatarPos.x + Math.round((avatarSize.width - targetSize.width) / 2);
+    y = avatarPos.y - targetSize.height - GAP;
+  }
+
+  if (monitor) {
+    const minX = monitor.position.x;
+    const maxX = monitor.position.x + monitor.size.width;
+    const minY = monitor.position.y;
+    const maxY = monitor.position.y + monitor.size.height;
+    // Flip to the opposite side when poking past the screen edge.
+    if (side === "right" && x + targetSize.width > maxX) {
+      x = avatarPos.x - targetSize.width - GAP;
+    }
+    if (side === "top" && y < minY) {
+      y = avatarPos.y + avatarSize.height + GAP;
+    }
+    x = Math.max(minX, Math.min(x, maxX - targetSize.width));
+    y = Math.max(minY, Math.min(y, maxY - targetSize.height));
+  }
+
+  await target.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
+  await target.show();
+  if (focus) await target.setFocus();
+}
+
+/** Show the chat bubble snapped next to the avatar (no-op outside Tauri). */
+export async function showChatWindow(): Promise<void> {
+  if (!hasTauri()) {
+    console.info("[sage] 純瀏覽器開發：chat 視窗需在 Tauri 內執行");
+    return;
+  }
+  await showNextToAvatar("chat", "right", true);
+}
+
+/** Show the proactive speech bubble above the avatar, without stealing focus. */
+export async function showBubbleWindow(): Promise<void> {
+  if (!hasTauri()) return;
+  await showNextToAvatar("bubble", "top", false);
+}
 
 export async function toggleChatWindow(): Promise<void> {
   if (!hasTauri()) {
     console.info("[sage] 純瀏覽器開發：chat 視窗 toggle 需在 Tauri 內執行");
     return;
   }
-  const { Window, PhysicalPosition, currentMonitor, getCurrentWindow } =
-    await import("@tauri-apps/api/window");
-
+  const { Window } = await import("@tauri-apps/api/window");
   const chat = await Window.getByLabel("chat");
   if (!chat) return;
 
@@ -20,31 +85,5 @@ export async function toggleChatWindow(): Promise<void> {
     await chat.hide();
     return;
   }
-
-  const avatar = getCurrentWindow();
-  const [avatarPos, avatarSize, chatSize, monitor] = await Promise.all([
-    avatar.outerPosition(),
-    avatar.outerSize(),
-    chat.outerSize(),
-    currentMonitor(),
-  ]);
-
-  // Default: to the right of the avatar, bottoms roughly aligned.
-  let x = avatarPos.x + avatarSize.width + GAP;
-  let y = avatarPos.y + avatarSize.height - chatSize.height;
-
-  if (monitor) {
-    const minX = monitor.position.x;
-    const maxX = monitor.position.x + monitor.size.width;
-    const minY = monitor.position.y;
-    const maxY = monitor.position.y + monitor.size.height;
-    // Flip to the left side when the bubble would poke past the screen edge.
-    if (x + chatSize.width > maxX) x = avatarPos.x - chatSize.width - GAP;
-    x = Math.max(minX, Math.min(x, maxX - chatSize.width));
-    y = Math.max(minY, Math.min(y, maxY - chatSize.height));
-  }
-
-  await chat.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
-  await chat.show();
-  await chat.setFocus();
+  await showNextToAvatar("chat", "right", true);
 }

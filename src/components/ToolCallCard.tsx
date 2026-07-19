@@ -1,6 +1,7 @@
 // S4.3 — Collapsible transparency card for a tool call: name + argument JSON
 // + first lines of the result, expandable to full text.
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { ToolCall } from "../ipc/contract.ts";
 
 interface Props {
@@ -12,6 +13,7 @@ interface Props {
 const PREVIEW_LINES = 3;
 
 export function ToolCallCard({ call, result }: Props) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const lines = (result ?? "").split("\n");
   const preview = lines.slice(0, PREVIEW_LINES).join("\n");
@@ -30,15 +32,15 @@ export function ToolCallCard({ call, result }: Props) {
         </span>
         <span className="tool-card-name">{call.function.name}</span>
         <span className="tool-card-tag">
-          {result === undefined ? "執行中…" : "工具"}
+          {result === undefined ? t("toolCard.running") : t("toolCard.tool")}
         </span>
       </button>
       {open ? (
         <div className="tool-card-body">
-          <div className="tool-card-label">參數</div>
+          <div className="tool-card-label">{t("toolCard.args")}</div>
           <pre>{prettyJson(call.function.arguments)}</pre>
-          <div className="tool-card-label">回傳</div>
-          <pre>{result ?? "（還沒有結果）"}</pre>
+          <div className="tool-card-label">{t("toolCard.result")}</div>
+          <pre>{result ?? t("toolCard.noResult")}</pre>
         </div>
       ) : (
         result !== undefined &&

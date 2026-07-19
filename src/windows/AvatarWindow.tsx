@@ -4,8 +4,12 @@
 // bubble. Mood (idle/thinking/talking) is driven by the chat window over a
 // Tauri event, falling back to the local chat store in pure-browser dev.
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useTranslation } from "react-i18next";
+import { useObservation } from "../observe/runner.ts";
 import { hasTauri } from "../runtime.ts";
 import { avatarMood, MOOD_EVENT, type AvatarMood, useChatStore } from "../store/chat.ts";
+import { useSettingsStore } from "../store/settings.ts";
+import { useSettingsSync } from "../store/settingsSync.ts";
 import { toggleChatWindow } from "./chatToggle.ts";
 import "./avatar.css";
 
@@ -13,10 +17,18 @@ import "./avatar.css";
 const DRAG_THRESHOLD = 4;
 
 export function AvatarWindow() {
+  const { t } = useTranslation();
   const localMood = useChatStore(avatarMood);
   const [eventMood, setEventMood] = useState<AvatarMood | null>(null);
   const mood = eventMood ?? localMood;
   const press = useRef<{ x: number; y: number } | null>(null);
+
+  // S5.1–S5.3 run here — the avatar webview is the only one always visible,
+  // so its timers never get throttled. Badge shows while observing.
+  useSettingsSync();
+  const { observing, devForceAsk, devFakeBubble } = useObservation();
+  const pauseObservation = () =>
+    void useSettingsStore.getState().save({ observe_enabled: false });
 
   useEffect(() => {
     if (!hasTauri()) return;
@@ -63,11 +75,33 @@ export function AvatarWindow() {
 
   return (
     <div className="avatar-stage" data-tauri-drag-region>
+      {observing && (
+        <button
+          type="button"
+          className="observe-badge"
+          title={t("avatar.observing")}
+          aria-label={t("avatar.pauseObserve")}
+          onClick={pauseObservation}
+        >
+          👁
+        </button>
+      )}
+      {devForceAsk && (
+        <button
+          type="button"
+          className="observe-badge dev-test-badge"
+          title={t("avatar.devTest")}
+          aria-label={t("avatar.devTestAria")}
+          onClick={(e) => (e.shiftKey ? devFakeBubble?.() : devForceAsk())}
+        >
+          🧪
+        </button>
+      )}
       <div
         className={`sage-sprite mood-${mood}`}
         role="button"
-        aria-label="開關對話氣泡"
-        title="點一下跟 Sage 聊天，按住拖拉移動"
+        aria-label={t("avatar.toggleChat")}
+        title={t("avatar.sprite")}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}

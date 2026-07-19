@@ -1,6 +1,7 @@
 // Composer: Enter sends, Shift+Enter breaks the line; while streaming the
 // send button becomes a stop button. Without an API key it shows guidance.
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   streaming: boolean;
@@ -17,14 +18,15 @@ export function Composer({
   onStop,
   onOpenSettings,
 }: Props) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState("");
 
   if (!hasKey) {
     return (
       <div className="composer composer-guide">
-        <p>還沒有 OpenRouter API key，Sage 說不了話。</p>
+        <p>{t("composer.noKey")}</p>
         <button type="button" onClick={onOpenSettings}>
-          打開設定貼上 key
+          {t("composer.openSettings")}
         </button>
       </div>
     );
@@ -48,8 +50,8 @@ export function Composer({
       <textarea
         value={draft}
         rows={1}
-        placeholder="跟 Sage 說點什麼…"
-        aria-label="訊息輸入"
+        placeholder={t("composer.placeholder")}
+        aria-label={t("composer.inputAria")}
         onChange={(e) => setDraft(e.currentTarget.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -63,8 +65,8 @@ export function Composer({
           type="button"
           className="composer-btn composer-stop"
           onClick={onStop}
-          title="停止回應"
-          aria-label="停止回應"
+          title={t("composer.stop")}
+          aria-label={t("composer.stop")}
         >
           ■
         </button>
@@ -73,8 +75,8 @@ export function Composer({
           type="submit"
           className="composer-btn composer-send"
           disabled={!draft.trim()}
-          title="送出（Enter）"
-          aria-label="送出"
+          title={t("composer.sendTitle")}
+          aria-label={t("composer.send")}
         >
           ↑
         </button>

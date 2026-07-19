@@ -1,6 +1,7 @@
 // Message column of the chat bubble: user/assistant bubbles, tool cards,
 // and the in-flight streaming bubble with its cursor.
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../ipc/contract.ts";
 import { ToolCallCard } from "./ToolCallCard.tsx";
 
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export function MessageList({ messages, partial, streaming }: Props) {
+  const { t } = useTranslation();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -29,8 +31,8 @@ export function MessageList({ messages, partial, streaming }: Props) {
     <div className="messages">
       {messages.length === 0 && !streaming && (
         <div className="messages-empty">
-          <p>嗨，我是 Sage。</p>
-          <p>想聊什麼，或有想讓我讀的檔案嗎？</p>
+          <p>{t("messages.greeting1")}</p>
+          <p>{t("messages.greeting2")}</p>
         </div>
       )}
       {messages.map((message, index) => {

@@ -49,6 +49,23 @@ const CATALOG: OpenRouterModel[] = [
     supported_parameters: ["tools"],
     architecture: { input_modalities: ["text", "image"] },
   },
+  {
+    id: "g/content-safety:free",
+    name: "Vendor: Content Safety (free)",
+    pricing: { prompt: "0" },
+    supported_parameters: ["tools"],
+    architecture: { input_modalities: ["text", "image"] },
+  },
+  {
+    id: "h/free-music",
+    name: "Free Music Preview",
+    pricing: { prompt: "0" },
+    supported_parameters: ["tools"],
+    architecture: {
+      input_modalities: ["text", "image"],
+      output_modalities: ["audio"],
+    },
+  },
 ];
 
 function fakeFetch(
@@ -91,6 +108,17 @@ test("models missing pricing/capability fields are treated as not matching", asy
     assert.ok(!list.some((m) => m.id === "d/paid-both"));
     // prompt 免費但 completion 計費 → 不是真免費
     assert.ok(!list.some((m) => m.id === "f/free-prompt-paid-completion"));
+  }
+});
+
+test("safety classifiers and non-text-output models are excluded", async () => {
+  const tools = await fetchFreeToolModels(fakeFetch({ data: CATALOG }));
+  const vision = await fetchFreeVisionModels(fakeFetch({ data: CATALOG }));
+  for (const list of [tools, vision]) {
+    // 只回 safe/unsafe 標籤的審查模型（如 content-safety、llama-guard）
+    assert.ok(!list.some((m) => m.id === "g/content-safety:free"));
+    // 輸出不含 text 的模型（音樂/影像生成）
+    assert.ok(!list.some((m) => m.id === "h/free-music"));
   }
 });
 

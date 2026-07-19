@@ -2,6 +2,7 @@
    talking bounce + mouth. The window itself is transparent. */
 
 .avatar-stage {
+  position: relative;
   width: 100vw;
   height: 100vh;
   display: grid;
@@ -209,6 +210,60 @@
   }
   50% {
     transform: scaleY(1);
+  }
+}
+
+/* ---- 觀察中徽章：一鍵暫停（S5 隱私硬約束） ---- */
+
+.observe-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid #5e7f52;
+  background: #f4f8ef;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  animation: observe-pulse 2.4s ease-in-out infinite;
+}
+
+.observe-badge:hover {
+  background: #e8a79e;
+  border-color: #a05a50;
+}
+
+/* dev 限定的測試按鈕，疊在 👁 下方 */
+.dev-test-badge {
+  top: 30px;
+  animation: none;
+  opacity: 0.85;
+}
+
+.dev-test-badge:hover {
+  background: #cfe3c4;
+  border-color: #5e7f52;
+}
+
+@keyframes observe-pulse {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .observe-badge {
+    animation: none;
   }
 }
 

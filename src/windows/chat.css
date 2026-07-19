@@ -384,7 +384,8 @@
 
 .field input[type="text"],
 .field input[type="password"],
-.field input[type="number"] {
+.field input[type="number"],
+.field select {
   padding: 7px 9px;
   border: 1.5px solid var(--bubble-border);
   border-radius: 9px;
@@ -395,12 +396,14 @@
   outline: none;
 }
 
-.field input:focus-visible {
+.field input:focus-visible,
+.field select:focus-visible {
   border-color: var(--leaf);
 }
 
 .field-row {
   flex-direction: row;
+  flex-wrap: wrap; /* longer locales (en/ja) push the interval to its own line */
   align-items: center;
   justify-content: space-between;
   gap: 8px;

@@ -24,10 +24,18 @@ pub struct Settings {
     /// Optional OpenRouter ranking header.
     #[serde(default)]
     pub referer: String,
+    /// UI + assistant language: "auto" (follow system) or a BCP-47 tag
+    /// the frontend supports (zh-TW / en / zh-CN / ja).
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 fn default_interval() -> u32 {
     8
+}
+
+fn default_language() -> String {
+    "auto".into()
 }
 
 impl Default for Settings {
@@ -39,6 +47,7 @@ impl Default for Settings {
             observe_enabled: false,
             observe_interval: default_interval(),
             referer: "https://github.com/sage".into(),
+            language: default_language(),
         }
     }
 }

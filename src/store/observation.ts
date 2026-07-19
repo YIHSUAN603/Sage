@@ -24,7 +24,7 @@ export interface ObservationState {
   recent: ContextSnapshot[];
   /** Pending proactive bubbles, oldest first. */
   bubbles: SpeechBubble[];
-  pushContext: (window: ActiveWindow | null) => void;
+  pushContext: (window: ActiveWindow | null, at?: number) => void;
   pushBubble: (text: string, reason?: string) => void;
   dismissBubble: (id: string) => void;
   clear: () => void;
@@ -36,9 +36,9 @@ export const useObservationStore = create<ObservationState>()((set) => ({
   recent: [],
   bubbles: [],
 
-  pushContext(window) {
+  pushContext(window, at = Date.now()) {
     set((state) => ({
-      recent: [...state.recent, { window, at: Date.now() }].slice(-RECENT_LIMIT),
+      recent: [...state.recent, { window, at }].slice(-RECENT_LIMIT),
     }));
   },
 

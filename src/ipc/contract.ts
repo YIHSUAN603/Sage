@@ -21,6 +21,8 @@ export interface Settings {
   observe_interval: number;
   /** Optional OpenRouter ranking header. */
   referer: string;
+  /** UI + assistant language: "auto" (follow system) or zh-TW / en / zh-CN / ja. */
+  language: string;
 }
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   observe_enabled: false,
   observe_interval: 8,
   referer: "https://github.com/sage",
+  language: "auto",
 };
 
 // ---------------------------------------------------------------------------

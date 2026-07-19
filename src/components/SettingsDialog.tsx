@@ -2,6 +2,8 @@
 // slots (chat needs `tools`, observe needs image input), and the
 // observation switch with its privacy note.
 import { useEffect, useState, type FormEvent } from "react";
+import { useTranslation } from "react-i18next";
+import { LANGUAGE_LABELS, LANGUAGES } from "../i18n/index.ts";
 import type { Settings } from "../ipc/contract.ts";
 import { useSettingsStore } from "../store/settings.ts";
 
@@ -40,6 +42,7 @@ export function SettingsDialog({
   loadChatModels = loadModelsPlaceholder,
   loadObserveModels = loadModelsPlaceholder,
 }: Props) {
+  const { t } = useTranslation();
   const settings = useSettingsStore((s) => s.settings);
   const save = useSettingsStore((s) => s.save);
   const saving = useSettingsStore((s) => s.saving);
@@ -83,7 +86,22 @@ export function SettingsDialog({
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
       >
-        <h2>設定</h2>
+        <h2>{t("settings.title")}</h2>
+
+        <label className="field">
+          <span>{t("settings.language")}</span>
+          <select
+            value={draft.language}
+            onChange={(e) => patch({ language: e.currentTarget.value })}
+          >
+            <option value="auto">{t("settings.languageAuto")}</option>
+            {LANGUAGES.map((lang) => (
+              <option key={lang} value={lang}>
+                {LANGUAGE_LABELS[lang]}
+              </option>
+            ))}
+          </select>
+        </label>
 
         <label className="field">
           <span>OpenRouter API key</span>
@@ -97,42 +115,39 @@ export function SettingsDialog({
         </label>
 
         <label className="field">
-          <span>聊天模型（必填，需支援 tools）</span>
+          <span>{t("settings.chatModel")}</span>
           <input
             type="text"
             list="chat-model-options"
             value={draft.chat_model}
-            placeholder="點一下從清單挑選，或直接填 model id"
+            placeholder={t("settings.chatModelPlaceholder")}
             onChange={(e) => patch({ chat_model: e.currentTarget.value })}
           />
           {modelsError && (
-            <span className="field-hint">
-              模型清單載入失敗——請自行填入 OpenRouter model id（例：
-              google/gemma-4-26b-a4b-it:free）。
-            </span>
+            <span className="field-hint">{t("settings.modelsError")}</span>
           )}
           <datalist id="chat-model-options">
             {chatModels.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name + (m.recommended ? "（推薦：tools+vision 通吃）" : "")}
+                {m.name + (m.recommended ? t("settings.recommended") : "")}
               </option>
             ))}
           </datalist>
         </label>
 
         <label className="field">
-          <span>觀察模型（需支援圖片輸入）</span>
+          <span>{t("settings.observeModel")}</span>
           <input
             type="text"
             list="observe-model-options"
             value={draft.observe_model}
-            placeholder="可與聊天模型相同"
+            placeholder={t("settings.observeModelPlaceholder")}
             onChange={(e) => patch({ observe_model: e.currentTarget.value })}
           />
           <datalist id="observe-model-options">
             {observeModels.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.name + (m.recommended ? "（推薦：tools+vision 通吃）" : "")}
+                {m.name + (m.recommended ? t("settings.recommended") : "")}
               </option>
             ))}
           </datalist>
@@ -147,10 +162,10 @@ export function SettingsDialog({
                 patch({ observe_enabled: e.currentTarget.checked })
               }
             />
-            <span>開啟觀察（預設關閉）</span>
+            <span>{t("settings.observeEnable")}</span>
           </label>
           <label className="interval-label">
-            <span>間隔</span>
+            <span>{t("settings.interval")}</span>
             <input
               type="number"
               min={2}
@@ -166,24 +181,20 @@ export function SettingsDialog({
                 })
               }
             />
-            <span>秒</span>
+            <span>{t("settings.seconds")}</span>
           </label>
         </div>
 
-        <p className="privacy-note">
-          觀察開啟後，Sage 會定期讀取目前視窗標題，必要時擷取螢幕縮圖送往
-          OpenRouter 判斷「有沒有值得一提的事」。截圖只在記憶體中處理、
-          送出後即丟棄，不會存檔；關閉觀察即完全停止一切擷取與上傳。
-        </p>
+        <p className="privacy-note">{t("settings.privacyNote")}</p>
 
         {error && <p className="dialog-error">{error}</p>}
 
         <div className="dialog-actions">
           <button type="button" onClick={onClose}>
-            取消
+            {t("settings.cancel")}
           </button>
           <button type="submit" className="primary" disabled={saving}>
-            {saving ? "儲存中…" : "儲存"}
+            {saving ? t("settings.saving") : t("settings.save")}
           </button>
         </div>
       </form>

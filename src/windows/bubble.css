@@ -1,0 +1,85 @@
+/* S5.4 — proactive speech bubble, matching the sage-leaf palette. The window
+   itself is transparent; only the card catches the eye (and the cursor). */
+
+.bubble-stage {
+  width: 100vw;
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 6px 10px 14px; /* room for the tail + a soft shadow */
+  box-sizing: border-box;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.bubble-card {
+  position: relative;
+  max-width: 100%;
+  padding: 10px 30px 10px 14px;
+  border-radius: 14px;
+  background: #f4f8ef;
+  border: 2px solid #5e7f52;
+  box-shadow: 0 4px 14px rgba(30, 40, 28, 0.25);
+  cursor: pointer;
+  animation: bubble-pop 0.22s ease-out;
+}
+
+@keyframes bubble-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.bubble-text {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #2f3a2e;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.bubble-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  border: none;
+  background: none;
+  padding: 2px;
+  font-size: 14px;
+  line-height: 1;
+  color: #5e7f52;
+  cursor: pointer;
+}
+
+.bubble-close:hover {
+  color: #2f3a2e;
+}
+
+/* Tail pointing down toward the avatar. */
+.bubble-tail {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 14px;
+  height: 14px;
+  transform: translateX(-50%) rotate(45deg);
+  background: #f4f8ef;
+  border-right: 2px solid #5e7f52;
+  border-bottom: 2px solid #5e7f52;
+  border-bottom-right-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bubble-card {
+    animation: none;
+  }
+}

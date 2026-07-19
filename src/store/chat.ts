@@ -1,11 +1,14 @@
 // S4.5 — Chat store: message history, streaming flag, in-flight partial text
 // and the AbortController behind the composer's stop button.
 import { create } from "zustand";
+import i18n from "../i18n/index.ts";
 import type { ChatMessage } from "../ipc/contract.ts";
 import { AgentLoopError, runAgentLoop } from "../llm/loop.ts";
+import { buildContextMessage } from "../observe/context.ts";
 import { createReadFileTool } from "../tools/readFile.ts";
 import { createToolRegistry } from "../tools/registry.ts";
 import { requireIpc } from "./ipc.ts";
+import { useObservationStore } from "./observation.ts";
 import { useSettingsStore } from "./settings.ts";
 
 /** Avatar animation state, derived from streaming progress. */
@@ -22,6 +25,8 @@ export interface ChatState {
   error: string | null;
   abort: AbortController | null;
   send: (text: string) => Promise<void>;
+  /** A clicked proactive bubble becomes the assistant's opening line (no LLM call). */
+  openFromBubble: (text: string) => void;
   stop: () => void;
   clearError: () => void;
   clear: () => void;
@@ -41,10 +46,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     const ipc = requireIpc();
     const model = useSettingsStore.getState().settings.chat_model.trim();
     if (!model) {
-      set({
-        error:
-          "尚未選擇聊天模型——請開啟設定（⚙），在「聊天模型」挑一個或填入 OpenRouter model id。",
-      });
+      set({ error: i18n.t("errors.noChatModel") });
       return;
     }
     const messages: ChatMessage[] = [
@@ -53,6 +55,13 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     ];
     const abort = new AbortController();
     set({ messages, streaming: true, partial: "", error: null, abort });
+
+    // S5.4 — 觀察開啟時，把最近的視窗脈絡以 system message 注入「這次請求」，
+    // 但不進 store.messages（對話歷史保持乾淨，UI 本來也不渲染 system）。
+    const observed = useSettingsStore.getState().settings.observe_enabled
+      ? buildContextMessage(useObservationStore.getState().recent, Date.now())
+      : null;
+    const requestMessages = observed ? [observed, ...messages] : messages;
 
     // runAgentLoop 處理整個 function-calling 迴圈：串流→有 tool_calls 就查
     // registry 執行→回填 role:"tool"→續跑至收斂。onMessage 讓每則 assistant
@@ -64,7 +73,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       await runAgentLoop({
         ipc,
         model,
-        messages,
+        messages: requestMessages,
         tools: registry,
         signal: abort.signal,
         onDelta(text) {
@@ -95,6 +104,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     }
   },
 
+  openFromBubble(text) {
+    const trimmed = text.trim();
+    if (!trimmed || get().streaming) return;
+    set((state) => ({
+      messages: [...state.messages, { role: "assistant", content: trimmed }],
+      error: null,
+    }));
+  },
+
   stop() {
     get().abort?.abort();
   },
@@ -118,11 +136,11 @@ export function avatarMood(state: ChatState): AvatarMood {
 function describeStreamError(error: AgentLoopError): string {
   switch (error.kind) {
     case "auth":
-      return "API key 無效或未授權（401）——請到設定檢查 OpenRouter key。";
+      return i18n.t("errors.auth");
     case "rate_limit":
-      return "額度或速率已達上限（429）——休息一下再試。";
+      return i18n.t("errors.rateLimit");
     case "network":
-      return `網路連線失敗：${error.message}`;
+      return i18n.t("errors.network", { message: error.message });
     default:
       return error.message;
   }
