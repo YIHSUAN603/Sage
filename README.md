@@ -9,6 +9,7 @@ Built with Tauri 2, React 19, and TypeScript. Powered by free models on [OpenRou
 - **Floating avatar** — a small, transparent, draggable, always-on-top character window. No dock icon, no taskbar entry. Click it to open the chat.
 - **Streaming chat** — token-by-token streaming responses with an abortable composer (Enter to send, Shift+Enter for a new line).
 - **Tool calling** — the assistant can call tools (currently `read_file`) through a data-driven registry; tool calls and results render as collapsible cards in the chat. Adding a tool doesn't touch the agent loop.
+- **Skills** — drop Claude-Code-compatible skill folders (a `SKILL.md` with `name`/`description` frontmatter) into `<app config dir>/skills/`, and the assistant loads their full instructions on demand via a `use_skill` tool whenever a task matches. New skills take effect on the next message — no restart.
 - **Context observation (opt-in)** — Sage can sample your active window title (cheap, frequent) and take throttled, downscaled screenshots (expensive, on demand) to understand what you're doing.
 - **Proactive bubbles** — when observation detects something worth mentioning (stuck on the same window, rapid app switching, returning from idle…), Sage pops a small speech bubble instead of interrupting you with a full window. Rate-limited and cooled down so it stays quiet most of the time.
 - **Free models, chosen by capability** — model lists are fetched live from OpenRouter and filtered dynamically: fully free pricing, `tools` support for the chat model, `image` input for the observation model. Nothing is hard-coded.
@@ -20,6 +21,16 @@ The architecture follows one rule: **Rust provides capabilities, the frontend or
 
 - The Rust side (`src-tauri/src/`) exposes narrow commands: LLM streaming over SSE (`llm.rs`), screen capture (`capture.rs`), active-window lookup (`context.rs`), local settings (`settings.rs`), and file reading (`tools.rs`). The OpenRouter API key is read from settings inside Rust and never enters JavaScript.
 - The frontend owns all state and logic: the function-calling agent loop (`src/llm/loop.ts`), SSE delta accumulation (`src/llm/openrouter.ts`), the tool registry (`src/tools/`), the observation pipeline (`src/observe/`), and Zustand stores (`src/store/`).
+- Skills are plain folders under `<app config dir>/skills/` (created on first scan; next to `settings.json`). Each folder holds a `SKILL.md`; the frontmatter's `name` and `description` go into the `use_skill` tool's catalog, and the body is returned when the model invokes the skill:
+
+  ```markdown
+  ---
+  name: pirate-talk
+  description: Use when the user wants pirate-styled replies.
+  ---
+
+  Always answer like a pirate. End sentences with "arr".
+  ```
 - Three Tauri windows share one React bundle, selected by a `?window=` query param: `avatar` (the character), `bubble` (proactive toasts), and `chat` (the conversation panel).
 
 ## Privacy
@@ -71,7 +82,7 @@ src/
   components/ Composer, message list, tool-call cards, settings dialog
   i18n/       Locales: en, zh-TW, zh-CN, ja
 src-tauri/
-  src/        Rust capabilities: llm, capture, context, settings, tools
+  src/        Rust capabilities: llm, capture, context, settings, tools, skills
 ```
 
 ## Notes

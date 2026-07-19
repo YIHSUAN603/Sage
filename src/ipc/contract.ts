@@ -113,6 +113,17 @@ export type StreamEvent =
   | { type: "error"; kind: StreamErrorKind; status?: number; message: string };
 
 // ---------------------------------------------------------------------------
+// Skills — mirrors src-tauri/src/skills.rs. A skill is a folder under
+// <app_config_dir>/skills/ containing a SKILL.md (optional frontmatter:
+// name + description) whose body the model loads on demand via `use_skill`.
+// ---------------------------------------------------------------------------
+
+export interface SkillMeta {
+  name: string;
+  description: string;
+}
+
+// ---------------------------------------------------------------------------
 // Observation context
 // ---------------------------------------------------------------------------
 
@@ -128,6 +139,8 @@ export interface ActiveWindow {
 export const COMMANDS = {
   chatStream: "chat_stream",
   toolReadFile: "tool_read_file",
+  listSkills: "list_skills",
+  readSkill: "read_skill",
   getSettings: "get_settings",
   setSettings: "set_settings",
   captureScreen: "capture_screen",
@@ -151,6 +164,10 @@ export interface SageIpc {
   ): Promise<void>;
   /** Read a local UTF-8 file (≤256KB). Rejects with a message on failure. */
   toolReadFile(path: string): Promise<string>;
+  /** Installed skills' metadata (scans <config_dir>/skills/, creating it if needed). */
+  listSkills(): Promise<SkillMeta[]>;
+  /** One skill's SKILL.md body (frontmatter stripped). Rejects when the name is unknown. */
+  readSkill(name: string): Promise<string>;
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<void>;
   /** Capture the main screen as a JPEG data URL. Rejects when observe_enabled is false. */

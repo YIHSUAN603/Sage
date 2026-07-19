@@ -2,11 +2,12 @@
 // and the AbortController behind the composer's stop button.
 import { create } from "zustand";
 import i18n from "../i18n/index.ts";
-import type { ChatMessage } from "../ipc/contract.ts";
+import type { ChatMessage, SkillMeta } from "../ipc/contract.ts";
 import { AgentLoopError, runAgentLoop } from "../llm/loop.ts";
 import { buildContextMessage } from "../observe/context.ts";
 import { createReadFileTool } from "../tools/readFile.ts";
 import { createToolRegistry } from "../tools/registry.ts";
+import { createSkillTool } from "../tools/useSkill.ts";
 import { requireIpc } from "./ipc.ts";
 import { useObservationStore } from "./observation.ts";
 import { useSettingsStore } from "./settings.ts";
@@ -66,7 +67,18 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     // runAgentLoop 處理整個 function-calling 迴圈：串流→有 tool_calls 就查
     // registry 執行→回填 role:"tool"→續跑至收斂。onMessage 讓每則 assistant
     // / tool 訊息一落地就進 UI（工具卡片即時出現），onDelta 驅動串流游標。
-    const registry = createToolRegistry([createReadFileTool(ipc)]);
+    // Skill 目錄每次 send 重掃（本地 fs，很便宜）：丟新 skill 進資料夾立即生效；
+    // 掃描失敗只代表這輪沒有 use_skill 工具，聊天照常。
+    let skills: SkillMeta[] = [];
+    try {
+      skills = await ipc.listSkills();
+    } catch {
+      skills = [];
+    }
+    const registry = createToolRegistry([
+      createReadFileTool(ipc),
+      ...(skills.length > 0 ? [createSkillTool(ipc, skills)] : []),
+    ]);
     let partial = "";
 
     try {

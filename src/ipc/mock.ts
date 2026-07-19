@@ -6,6 +6,7 @@ import type {
   ChatRequest,
   SageIpc,
   Settings,
+  SkillMeta,
   StreamEvent,
 } from "./contract.ts";
 import { DEFAULT_SETTINGS } from "./contract.ts";
@@ -15,12 +16,19 @@ export interface MockIpcOptions {
   script?: StreamEvent[][];
   /** Fake filesystem for toolReadFile. */
   files?: Record<string, string>;
+  /** Installed skills for listSkills/readSkill. Defaults to none. */
+  skills?: MockSkill[];
   /** Initial settings (merged over DEFAULT_SETTINGS). */
   settings?: Partial<Settings>;
   /** activeWindow results, cycled per call. Defaults to [null]. */
   windows?: (ActiveWindow | null)[];
   /** Data URL returned by captureScreen. */
   screenshot?: string;
+}
+
+/** A skill as the mock stores it: contract SkillMeta plus its SKILL.md body. */
+export interface MockSkill extends SkillMeta {
+  body: string;
 }
 
 export interface MockIpc extends SageIpc {
@@ -60,6 +68,7 @@ const TINY_JPEG_DATA_URL =
 export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
   const script = options.script ?? DEFAULT_SCRIPT;
   const files = { ...(options.files ?? {}) };
+  const skills = [...(options.skills ?? [])];
   const windows = options.windows ?? [null];
   const screenshot = options.screenshot ?? TINY_JPEG_DATA_URL;
   let settings: Settings = { ...DEFAULT_SETTINGS, ...(options.settings ?? {}) };
@@ -94,6 +103,19 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
         throw new Error(`file not found: ${path}`);
       }
       return files[path];
+    },
+
+    async listSkills() {
+      calls.push({ command: "list_skills" });
+      return skills.map(({ name, description }) => ({ name, description }));
+    },
+
+    async readSkill(name) {
+      calls.push({ command: "read_skill", args: name });
+      const skill = skills.find((s) => s.name === name);
+      // Same message shape as skills.rs
+      if (!skill) throw new Error(`skill not found: ${name}`);
+      return skill.body;
     },
 
     async getSettings() {

@@ -7,6 +7,7 @@ import {
   type ActiveWindow,
   type SageIpc,
   type Settings,
+  type SkillMeta,
   type StreamEvent,
 } from "./contract.ts";
 
@@ -21,6 +22,14 @@ export const realIpc: SageIpc = {
 
   toolReadFile(path: string): Promise<string> {
     return invoke(COMMANDS.toolReadFile, { path });
+  },
+
+  listSkills(): Promise<SkillMeta[]> {
+    return invoke(COMMANDS.listSkills);
+  },
+
+  readSkill(name: string): Promise<string> {
+    return invoke(COMMANDS.readSkill, { name });
   },
 
   getSettings(): Promise<Settings> {
