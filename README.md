@@ -69,6 +69,19 @@ Then click the avatar, open Settings, paste your OpenRouter API key, and pick a 
 | `npm test` | Run unit tests (`node --test` with type stripping) |
 | `npm run build` | Type-check and build the frontend only |
 
+## CI / Releases
+
+GitHub Actions runs on every push and PR (`.github/workflows/ci.yml`): frontend type-check, build, and tests, plus `cargo test` for the Rust side.
+
+To publish a release (`.github/workflows/release.yml`):
+
+1. Bump the version in `src-tauri/tauri.conf.json`, `package.json`, and `src-tauri/Cargo.toml`, then commit.
+2. Tag and push: `git tag v0.2.0 && git push --tags`.
+3. Actions builds installers for macOS (Apple Silicon + Intel), Windows, and Linux, and creates a **draft** GitHub Release.
+4. Review the draft on the Releases page and publish it.
+
+> macOS builds are unsigned for now — first launch requires right-click → Open to bypass Gatekeeper.
+
 ## Project structure
 
 ```
