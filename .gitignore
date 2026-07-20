@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Machine-specific Cargo config (exFAT workaround redirects target-dir to a local APFS path)
+.cargo/config.toml
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
