@@ -207,6 +207,23 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       return { id: pet.id, displayName: pet.displayName, description: pet.description };
     },
 
+    async updatePetSage(id, persona, proactive) {
+      calls.push({ command: "update_pet_sage", args: { id, persona, proactive } });
+      const pet = pets.find((p) => p.id === id);
+      // Same message shape as pets.rs
+      if (!pet) throw new Error(`pet not found: ${id}`);
+      // Mirror the backend: blank persona / absent numbers remove the keys.
+      if (persona.trim()) pet.persona = persona;
+      else delete pet.persona;
+      const next: typeof pet.proactive = {};
+      if (proactive.cooldownMinutes !== undefined) {
+        next.cooldownMinutes = proactive.cooldownMinutes;
+      }
+      if (proactive.maxPerHour !== undefined) next.maxPerHour = proactive.maxPerHour;
+      if (Object.keys(next).length > 0) pet.proactive = next;
+      else delete pet.proactive;
+    },
+
     async getSettings() {
       calls.push({ command: "get_settings" });
       return { ...settings };

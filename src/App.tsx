@@ -2,9 +2,11 @@
 // `?window=` query set in tauri.conf.json (avatar is the default).
 import { IpcProvider } from "./components/IpcContext.tsx";
 import type { SageIpc } from "./ipc/contract.ts";
+import { useSettingsSync } from "./store/settingsSync.ts";
 import { AvatarWindow } from "./windows/AvatarWindow.tsx";
 import { BubbleWindow } from "./windows/BubbleWindow.tsx";
 import { ChatWindow } from "./windows/ChatWindow.tsx";
+import { useCompanionTheme } from "./windows/useCompanionTheme.ts";
 import "./App.css";
 
 export type SageWindowKind = "avatar" | "chat" | "bubble";
@@ -20,6 +22,9 @@ interface Props {
 
 function App({ ipc }: Props) {
   const kind = windowKindFromSearch(window.location.search);
+  // Every window follows settings saves and the active companion's palette.
+  useSettingsSync();
+  useCompanionTheme();
   return (
     <IpcProvider value={ipc}>
       {kind === "chat" ? (

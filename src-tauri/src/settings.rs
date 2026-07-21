@@ -47,6 +47,21 @@ pub struct Settings {
     /// Selected companion id (folder under <config>/pets/). Empty = built-in Sage.
     #[serde(default)]
     pub active_pet: String,
+    /// Custom persona for the built-in Sage companion. Empty = i18n default.
+    #[serde(default)]
+    pub custom_persona: String,
+    /// Minimum minutes between proactive observation asks. A pet's
+    /// `sage.proactive.cooldownMinutes` overrides this.
+    #[serde(default = "default_proactive_cooldown")]
+    pub proactive_cooldown_minutes: f64,
+    /// Max proactive bubbles per rolling hour; 0 = unlimited. A pet's
+    /// `sage.proactive.maxPerHour` overrides this.
+    #[serde(default)]
+    pub proactive_max_per_hour: u32,
+}
+
+fn default_proactive_cooldown() -> f64 {
+    2.0
 }
 
 fn default_interval() -> u32 {
@@ -85,6 +100,9 @@ impl Default for Settings {
             referer: "https://github.com/sage".into(),
             language: default_language(),
             active_pet: String::new(),
+            custom_persona: String::new(),
+            proactive_cooldown_minutes: default_proactive_cooldown(),
+            proactive_max_per_hour: 0,
         }
     }
 }

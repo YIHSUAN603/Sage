@@ -1,5 +1,6 @@
-/* S5.4 — proactive speech bubble, matching the sage-leaf palette. The window
-   itself is transparent; only the card catches the eye (and the cursor). */
+/* S5.4 — proactive speech bubble, on the shared palette vars (App.css) so it
+   follows the active companion's theme. The window itself is transparent;
+   only the card catches the eye (and the cursor). */
 
 .bubble-stage {
   width: 100vw;
@@ -18,8 +19,8 @@
   max-width: 100%;
   padding: 10px 30px 10px 14px;
   border-radius: 14px;
-  background: #f4f8ef;
-  border: 2px solid #5e7f52;
+  background: var(--bubble-bg);
+  border: 2px solid var(--leaf-deep);
   box-shadow: 0 4px 14px rgba(30, 40, 28, 0.25);
   cursor: pointer;
   animation: bubble-pop 0.22s ease-out;
@@ -40,7 +41,7 @@
   display: block;
   font-size: 13px;
   line-height: 1.5;
-  color: #2f3a2e;
+  color: var(--ink);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -56,12 +57,12 @@
   padding: 2px;
   font-size: 14px;
   line-height: 1;
-  color: #5e7f52;
+  color: var(--leaf-deep);
   cursor: pointer;
 }
 
 .bubble-close:hover {
-  color: #2f3a2e;
+  color: var(--ink);
 }
 
 /* Tail pointing down toward the avatar. */
@@ -72,9 +73,9 @@
   width: 14px;
   height: 14px;
   transform: translateX(-50%) rotate(45deg);
-  background: #f4f8ef;
-  border-right: 2px solid #5e7f52;
-  border-bottom: 2px solid #5e7f52;
+  background: var(--bubble-bg);
+  border-right: 2px solid var(--leaf-deep);
+  border-bottom: 2px solid var(--leaf-deep);
   border-bottom-right-radius: 3px;
 }
 

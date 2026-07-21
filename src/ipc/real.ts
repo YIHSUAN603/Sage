@@ -66,6 +66,15 @@ export const realIpc: SageIpc = {
     return invoke(COMMANDS.importPet, { sourcePath });
   },
 
+  updatePetSage(id, persona, proactive): Promise<void> {
+    return invoke(COMMANDS.updatePetSage, {
+      id,
+      persona,
+      cooldownMinutes: proactive.cooldownMinutes ?? null,
+      maxPerHour: proactive.maxPerHour ?? null,
+    });
+  },
+
   getSettings(): Promise<Settings> {
     return invoke(COMMANDS.getSettings);
   },

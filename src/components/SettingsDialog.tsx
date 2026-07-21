@@ -31,6 +31,35 @@ const loadModelsPlaceholder: LoadModels = async () => [];
 /** Sentinel select value that reveals the free-text model input. */
 const CUSTOM_MODEL = "__custom__";
 
+/**
+ * The selected pet's editable `sage` block, loaded from its pet.json.
+ * Numeric fields stay strings so "" can mean "inherit the global setting".
+ */
+interface PetSageDraft {
+  id: string;
+  displayName: string;
+  persona: string;
+  cooldown: string;
+  maxPerHour: string;
+  dirty: boolean;
+}
+
+/** "" or invalid ⇒ undefined (inherit); otherwise the parsed minutes (> 0). */
+function parseCooldown(raw: string): number | undefined {
+  const t = raw.trim();
+  if (t === "") return undefined;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+
+/** "" or invalid ⇒ undefined (inherit); 0 is kept — it means explicitly unlimited. */
+function parseMaxPerHour(raw: string): number | undefined {
+  const t = raw.trim();
+  if (t === "") return undefined;
+  const n = Math.floor(Number(t));
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
+}
+
 // Neither CLI can enumerate available models, so these are curated aliases (they
 // map to `--model`). Codex has no stable alias set — users type theirs (Custom…).
 const AGENT_MODEL_PRESETS: Record<Settings["agent_cli"], { value: string; label: string }[]> = {
@@ -133,6 +162,8 @@ export function SettingsDialog({
   const [pets, setPets] = useState<PetMeta[]>([]);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState(false);
+  const [petSage, setPetSage] = useState<PetSageDraft | null>(null);
+  const [petSageError, setPetSageError] = useState(false);
   const [cliCheck, setCliCheck] = useState<{
     status: "checking" | "ok" | "missing";
     text: string;
@@ -165,6 +196,35 @@ export function SettingsDialog({
       cancelled = true;
     };
   }, [open, loadChatModels, loadObserveModels]);
+
+  // Load the selected pet's sage block so its persona/cadence can be edited.
+  // An unreadable pet hides the editor (nothing sensible to write back to).
+  useEffect(() => {
+    setPetSageError(false);
+    const id = draft.active_pet.trim();
+    if (!open || !id) {
+      setPetSage(null);
+      return;
+    }
+    let cancelled = false;
+    requireIpc()
+      .readPet(id)
+      .then((pet) => {
+        if (cancelled) return;
+        setPetSage({
+          id,
+          displayName: pet.displayName,
+          persona: pet.persona ?? "",
+          cooldown: pet.proactive?.cooldownMinutes?.toString() ?? "",
+          maxPerHour: pet.proactive?.maxPerHour?.toString() ?? "",
+          dirty: false,
+        });
+      })
+      .catch(() => !cancelled && setPetSage(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, draft.active_pet]);
 
   // Probe the selected agent CLI (debounced) so a missing binary shows up here
   // rather than as a cryptic error on the first message.
@@ -218,6 +278,20 @@ export function SettingsDialog({
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    // Persona/cadence edits for a pet live in its pet.json, not in settings —
+    // write them back first; on failure keep the dialog open with the error.
+    if (petSage?.dirty && draft.active_pet.trim() === petSage.id) {
+      setPetSageError(false);
+      try {
+        await requireIpc().updatePetSage(petSage.id, petSage.persona, {
+          cooldownMinutes: parseCooldown(petSage.cooldown),
+          maxPerHour: parseMaxPerHour(petSage.maxPerHour),
+        });
+      } catch {
+        setPetSageError(true);
+        return;
+      }
+    }
     await save(draft);
     onClose();
   };
@@ -275,6 +349,132 @@ export function SettingsDialog({
             <span className="field-hint">{t("settings.importError")}</span>
           )}
         </label>
+
+        {draft.active_pet.trim() === "" ? (
+          <>
+            <label className="field">
+              <span>{t("settings.persona")}</span>
+              <textarea
+                rows={3}
+                value={draft.custom_persona}
+                placeholder={t("persona.default", { ns: "prompt" })}
+                onChange={(e) => patch({ custom_persona: e.currentTarget.value })}
+              />
+              <span className="field-hint">{t("settings.personaBuiltinHint")}</span>
+            </label>
+            <div className="field">
+              <div className="field field-row">
+                <label className="interval-label">
+                  <span>{t("settings.proactiveCooldown")}</span>
+                  <input
+                    type="number"
+                    min={0.5}
+                    step={0.5}
+                    value={draft.proactive_cooldown_minutes}
+                    onChange={(e) =>
+                      patch({
+                        proactive_cooldown_minutes: Math.max(
+                          0.5,
+                          Number(e.currentTarget.value) || 0,
+                        ),
+                      })
+                    }
+                  />
+                </label>
+                <label className="interval-label">
+                  <span>{t("settings.proactiveMaxPerHour")}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={draft.proactive_max_per_hour}
+                    onChange={(e) =>
+                      patch({
+                        proactive_max_per_hour: Math.max(
+                          0,
+                          Math.floor(Number(e.currentTarget.value) || 0),
+                        ),
+                      })
+                    }
+                  />
+                </label>
+              </div>
+              <span className="field-hint">{t("settings.proactiveBuiltinHint")}</span>
+            </div>
+          </>
+        ) : (
+          petSage && (
+            <>
+              <label className="field">
+                <span>{t("settings.persona")}</span>
+                <textarea
+                  rows={3}
+                  value={petSage.persona}
+                  placeholder={t("persona.synthBase", {
+                    ns: "prompt",
+                    name: petSage.displayName,
+                  })}
+                  onChange={(e) =>
+                    setPetSage({ ...petSage, persona: e.currentTarget.value, dirty: true })
+                  }
+                />
+                <span className="field-hint">{t("settings.personaPetHint")}</span>
+              </label>
+              <div className="field">
+                <div className="field field-row">
+                  <label className="interval-label">
+                    <span>{t("settings.proactiveCooldown")}</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      step={0.5}
+                      value={petSage.cooldown}
+                      placeholder={String(draft.proactive_cooldown_minutes)}
+                      onChange={(e) =>
+                        setPetSage({ ...petSage, cooldown: e.currentTarget.value, dirty: true })
+                      }
+                    />
+                  </label>
+                  <label className="interval-label">
+                    <span>{t("settings.proactiveMaxPerHour")}</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={petSage.maxPerHour}
+                      placeholder={
+                        draft.proactive_max_per_hour === 0
+                          ? t("settings.proactiveUnlimited")
+                          : String(draft.proactive_max_per_hour)
+                      }
+                      onChange={(e) =>
+                        setPetSage({
+                          ...petSage,
+                          maxPerHour: e.currentTarget.value,
+                          dirty: true,
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+                <span className="field-hint">
+                  {t("settings.proactivePetHint", {
+                    cooldown: draft.proactive_cooldown_minutes,
+                    max:
+                      draft.proactive_max_per_hour === 0
+                        ? t("settings.proactiveUnlimited")
+                        : draft.proactive_max_per_hour,
+                  })}
+                </span>
+                {petSageError && (
+                  <span className="field-hint field-hint-error">
+                    {t("settings.petSageError")}
+                  </span>
+                )}
+              </div>
+            </>
+          )
+        )}
 
         <label className="field">
           <span>{t("settings.backend")}</span>

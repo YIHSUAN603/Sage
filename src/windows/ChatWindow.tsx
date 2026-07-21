@@ -23,7 +23,6 @@ import { hasTauri } from "../runtime.ts";
 import { avatarMood, MOOD_EVENT, useChatStore } from "../store/chat.ts";
 import { useObservationStore } from "../store/observation.ts";
 import { hasApiKey, useSettingsStore } from "../store/settings.ts";
-import { useSettingsSync } from "../store/settingsSync.ts";
 import "./chat.css";
 
 // Module-level so the references stay stable across renders (the dialog's
@@ -62,9 +61,6 @@ export function ChatWindow() {
       await emit(MOOD_EVENT, mood);
     })();
   }, [mood]);
-
-  // Reload settings when another window saves them (observation switch etc.).
-  useSettingsSync();
 
   // S5.4 — mirror context samples broadcast by the avatar window (so send()
   // can inject them) and turn clicked bubbles into the assistant's opener.

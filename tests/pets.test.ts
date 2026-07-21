@@ -9,6 +9,7 @@ import {
   chatPersonaSystem,
   gateSystem,
   personaIdentity,
+  proactiveTuning,
 } from "../src/store/persona.ts";
 import { MOOD_ROW, ROWS, rowForMood } from "../src/windows/petAtlas.ts";
 
@@ -100,6 +101,69 @@ test("unknown/unreadable pet falls back to built-in persona", async () => {
   bindIpc(createMockIpc({ pets: [CUSTOM] }));
   useActivePet("ghost");
   assert.match(await personaIdentity(), /Sage/);
+});
+
+test("custom_persona overrides the built-in Sage persona; blank falls back", async () => {
+  bindIpc(createMockIpc({ pets: [] }));
+  useSettingsStore.setState({
+    settings: { ...DEFAULT_SETTINGS, active_pet: "", custom_persona: "你是導盲犬阿福。" },
+  });
+  assert.equal(await personaIdentity(), "你是導盲犬阿福。");
+  // chatPersonaSystem stays null with no pet — chat behavior is unchanged.
+  assert.equal(await chatPersonaSystem(), null);
+  const gate = await gateSystem();
+  assert.ok(gate.startsWith("你是導盲犬阿福。"));
+
+  useSettingsStore.setState({
+    settings: { ...DEFAULT_SETTINGS, active_pet: "", custom_persona: "   " },
+  });
+  assert.match(await personaIdentity(), /Sage/);
+});
+
+test("proactiveTuning: pet overrides settings, settings carry the defaults", async () => {
+  const tuned: Pet = { ...CUSTOM, proactive: { cooldownMinutes: 7, maxPerHour: 3 } };
+  bindIpc(createMockIpc({ pets: [tuned, PLAIN] }));
+
+  useSettingsStore.setState({
+    settings: {
+      ...DEFAULT_SETTINGS,
+      active_pet: "dragon",
+      proactive_cooldown_minutes: 4,
+      proactive_max_per_hour: 10,
+    },
+  });
+  assert.deepEqual(await proactiveTuning(), { cooldownMinutes: 7, maxPerHour: 3 });
+
+  // A pet without a proactive block inherits the settings values.
+  useSettingsStore.setState({
+    settings: {
+      ...DEFAULT_SETTINGS,
+      active_pet: "pip",
+      proactive_cooldown_minutes: 4,
+      proactive_max_per_hour: 10,
+    },
+  });
+  assert.deepEqual(await proactiveTuning(), { cooldownMinutes: 4, maxPerHour: 10 });
+
+  // No pet at all → settings values (which default to 2 min / unlimited).
+  useActivePet("");
+  assert.deepEqual(await proactiveTuning(), { cooldownMinutes: 2, maxPerHour: 0 });
+});
+
+test("mock updatePetSage rewrites persona/proactive and clears them when blank", async () => {
+  const ipc = createMockIpc({ pets: [{ ...CUSTOM }] });
+  await ipc.updatePetSage("dragon", "你改當噴水龍。", { cooldownMinutes: 9 });
+  let pet = await ipc.readPet("dragon");
+  assert.equal(pet.persona, "你改當噴水龍。");
+  assert.deepEqual(pet.proactive, { cooldownMinutes: 9 });
+
+  // Blank persona + no numbers remove both keys (fall back to synthesized/global).
+  await ipc.updatePetSage("dragon", "  ", {});
+  pet = await ipc.readPet("dragon");
+  assert.equal(pet.persona, undefined);
+  assert.equal(pet.proactive, undefined);
+
+  await assert.rejects(() => ipc.updatePetSage("nope", "x", {}), /pet not found: nope/);
 });
 
 test("atlas has 9 rows and every mood maps into range", () => {

@@ -41,6 +41,8 @@ pub struct Pet {
     pub persona: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub proactive: Option<Proactive>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub theme: Option<Theme>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -50,6 +52,13 @@ pub struct Proactive {
     pub cooldown_minutes: Option<f64>,
     #[serde(default)]
     pub max_per_hour: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Theme {
+    #[serde(default)]
+    pub accent: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +87,8 @@ struct SageExt {
     persona: Option<String>,
     #[serde(default)]
     proactive: Option<Proactive>,
+    #[serde(default)]
+    theme: Option<Theme>,
 }
 
 fn pets_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -204,6 +215,90 @@ fn import_pet_into(source: &Path, pets_dir: &Path) -> Result<PetMeta, String> {
     })
 }
 
+/// Update a pet's `sage` block (persona + proactive tuning) in its pet.json.
+/// Blank persona / absent numbers remove the corresponding key so the value
+/// falls back (synthesized persona / global settings). All other manifest
+/// fields — including keys we don't know about — are preserved verbatim,
+/// keeping the file valid under the Codex pet contract.
+#[tauri::command]
+pub fn update_pet_sage(
+    app: tauri::AppHandle,
+    id: String,
+    persona: String,
+    cooldown_minutes: Option<f64>,
+    max_per_hour: Option<u32>,
+) -> Result<(), String> {
+    let dir = pets_dir(&app)?;
+    update_pet_sage_in(&dir, &id, &persona, cooldown_minutes, max_per_hour)
+}
+
+/// The AppHandle-free core of `update_pet_sage`, unit-testable against a temp
+/// directory. Looks the pet up by parsed id (user input never joins a path).
+fn update_pet_sage_in(
+    pets_dir: &Path,
+    id: &str,
+    persona: &str,
+    cooldown_minutes: Option<f64>,
+    max_per_hour: Option<u32>,
+) -> Result<(), String> {
+    let (_, folder) = scan_pets(pets_dir)
+        .into_iter()
+        .find(|(pet, _)| pet.id == id)
+        .ok_or_else(|| format!("pet not found: {id}"))?;
+
+    let manifest = folder.join("pet.json");
+    let raw = std::fs::read_to_string(&manifest).map_err(|e| format!("read pet.json: {e}"))?;
+    let mut root: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("parse pet.json: {e}"))?;
+    let obj = root.as_object_mut().ok_or("pet.json is not an object")?;
+
+    let mut sage = match obj.get("sage") {
+        Some(serde_json::Value::Object(m)) => m.clone(),
+        _ => serde_json::Map::new(),
+    };
+
+    if persona.trim().is_empty() {
+        sage.remove("persona");
+    } else {
+        sage.insert("persona".into(), serde_json::Value::from(persona));
+    }
+
+    let mut proactive = match sage.get("proactive") {
+        Some(serde_json::Value::Object(m)) => m.clone(),
+        _ => serde_json::Map::new(),
+    };
+    match cooldown_minutes {
+        Some(v) => {
+            proactive.insert("cooldownMinutes".into(), serde_json::Value::from(v));
+        }
+        None => {
+            proactive.remove("cooldownMinutes");
+        }
+    }
+    match max_per_hour {
+        Some(v) => {
+            proactive.insert("maxPerHour".into(), serde_json::Value::from(v));
+        }
+        None => {
+            proactive.remove("maxPerHour");
+        }
+    }
+    if proactive.is_empty() {
+        sage.remove("proactive");
+    } else {
+        sage.insert("proactive".into(), serde_json::Value::Object(proactive));
+    }
+
+    if sage.is_empty() {
+        obj.remove("sage");
+    } else {
+        obj.insert("sage".into(), serde_json::Value::Object(sage));
+    }
+
+    let json = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
+    std::fs::write(&manifest, json).map_err(|e| format!("write pet.json: {e}"))
+}
+
 /// Keep only ASCII alphanumerics, '-' and '_'; other chars become '-'.
 /// Never empty (falls back to "pet") so the destination path is always valid.
 fn slugify(id: &str) -> String {
@@ -284,9 +379,13 @@ fn parse_manifest(raw: &str, fallback_id: &str) -> Option<Pet> {
     } else {
         m.display_name
     };
-    let (persona, proactive) = match m.sage {
-        Some(s) => (s.persona.filter(|p| !p.trim().is_empty()), s.proactive),
-        None => (None, None),
+    let (persona, proactive, theme) = match m.sage {
+        Some(s) => (
+            s.persona.filter(|p| !p.trim().is_empty()),
+            s.proactive,
+            s.theme,
+        ),
+        None => (None, None, None),
     };
     Some(Pet {
         id,
@@ -295,26 +394,28 @@ fn parse_manifest(raw: &str, fallback_id: &str) -> Option<Pet> {
         spritesheet_path: m.spritesheet_path,
         persona,
         proactive,
+        theme,
     })
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{import_pet_into, parse_manifest, slugify};
+    use super::{import_pet_into, parse_manifest, slugify, update_pet_sage_in};
     use std::path::PathBuf;
 
     #[test]
     fn parses_full_manifest_with_sage_block() {
-        let raw = r#"{
+        let raw = r##"{
             "id": "hatchling",
             "displayName": "小龍",
             "description": "一隻剛孵化的小龍",
             "spritesheetPath": "spritesheet.webp",
             "sage": {
                 "persona": "你是小龍",
-                "proactive": { "cooldownMinutes": 5, "maxPerHour": 6 }
+                "proactive": { "cooldownMinutes": 5, "maxPerHour": 6 },
+                "theme": { "accent": "#6f8fa3" }
             }
-        }"#;
+        }"##;
         let pet = parse_manifest(raw, "folder").unwrap();
         assert_eq!(pet.id, "hatchling");
         assert_eq!(pet.display_name, "小龍");
@@ -323,6 +424,7 @@ mod tests {
         let p = pet.proactive.unwrap();
         assert_eq!(p.cooldown_minutes, Some(5.0));
         assert_eq!(p.max_per_hour, Some(6));
+        assert_eq!(pet.theme.unwrap().accent.as_deref(), Some("#6f8fa3"));
     }
 
     #[test]
@@ -337,6 +439,7 @@ mod tests {
         assert_eq!(pet.display_name, "Pet");
         assert!(pet.persona.is_none());
         assert!(pet.proactive.is_none());
+        assert!(pet.theme.is_none());
     }
 
     #[test]
@@ -444,6 +547,99 @@ mod tests {
         let pets = tmp.0.join("pets");
         std::fs::create_dir_all(&pets).unwrap();
         assert!(import_pet_into(&source, &pets).is_err());
+    }
+
+    #[test]
+    fn update_sage_creates_block_and_preserves_unknown_keys() {
+        let tmp = TmpDir::new("sage-create");
+        let dragon = tmp.0.join("dragon");
+        std::fs::create_dir_all(&dragon).unwrap();
+        // `mood` is not part of any contract we know — it must survive the write.
+        std::fs::write(
+            dragon.join("pet.json"),
+            r#"{ "id": "dragon", "displayName": "小龍", "spritesheetPath": "s.webp", "mood": "chill" }"#,
+        )
+        .unwrap();
+
+        update_pet_sage_in(&tmp.0, "dragon", "你是小龍", Some(5.0), Some(6)).unwrap();
+
+        let raw = std::fs::read_to_string(dragon.join("pet.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["mood"], "chill");
+        assert_eq!(v["displayName"], "小龍");
+        assert_eq!(v["sage"]["persona"], "你是小龍");
+        assert_eq!(v["sage"]["proactive"]["cooldownMinutes"], 5.0);
+        assert_eq!(v["sage"]["proactive"]["maxPerHour"], 6);
+    }
+
+    #[test]
+    fn update_sage_blank_persona_and_absent_numbers_remove_keys() {
+        let tmp = TmpDir::new("sage-clear");
+        let dragon = tmp.0.join("dragon");
+        std::fs::create_dir_all(&dragon).unwrap();
+        // theme must survive even when persona + proactive are cleared.
+        std::fs::write(
+            dragon.join("pet.json"),
+            r##"{ "id": "dragon", "spritesheetPath": "s.webp", "sage": {
+                "persona": "舊人設",
+                "proactive": { "cooldownMinutes": 5, "maxPerHour": 6 },
+                "theme": { "accent": "#6f8fa3" }
+            } }"##,
+        )
+        .unwrap();
+
+        update_pet_sage_in(&tmp.0, "dragon", "  ", None, None).unwrap();
+
+        let raw = std::fs::read_to_string(dragon.join("pet.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let sage = v["sage"].as_object().unwrap();
+        assert!(!sage.contains_key("persona"));
+        assert!(!sage.contains_key("proactive"));
+        assert_eq!(v["sage"]["theme"]["accent"], "#6f8fa3");
+    }
+
+    #[test]
+    fn update_sage_removes_empty_sage_block_entirely() {
+        let tmp = TmpDir::new("sage-empty");
+        let dragon = tmp.0.join("dragon");
+        std::fs::create_dir_all(&dragon).unwrap();
+        std::fs::write(
+            dragon.join("pet.json"),
+            r#"{ "id": "dragon", "spritesheetPath": "s.webp", "sage": { "persona": "舊人設" } }"#,
+        )
+        .unwrap();
+
+        update_pet_sage_in(&tmp.0, "dragon", "", None, None).unwrap();
+
+        let raw = std::fs::read_to_string(dragon.join("pet.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(v.as_object().unwrap().get("sage").is_none());
+    }
+
+    #[test]
+    fn update_sage_partial_numbers_keep_only_given_keys() {
+        let tmp = TmpDir::new("sage-partial");
+        let dragon = tmp.0.join("dragon");
+        std::fs::create_dir_all(&dragon).unwrap();
+        std::fs::write(
+            dragon.join("pet.json"),
+            r#"{ "id": "dragon", "spritesheetPath": "s.webp",
+                "sage": { "proactive": { "cooldownMinutes": 5, "maxPerHour": 6 } } }"#,
+        )
+        .unwrap();
+
+        update_pet_sage_in(&tmp.0, "dragon", "", Some(3.0), None).unwrap();
+
+        let raw = std::fs::read_to_string(dragon.join("pet.json")).unwrap();
+        let v: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(v["sage"]["proactive"]["cooldownMinutes"], 3.0);
+        assert!(v["sage"]["proactive"].get("maxPerHour").is_none());
+    }
+
+    #[test]
+    fn update_sage_unknown_id_errors() {
+        let tmp = TmpDir::new("sage-missing");
+        assert!(update_pet_sage_in(&tmp.0, "nope", "x", None, None).is_err());
     }
 
     #[test]

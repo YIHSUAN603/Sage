@@ -4,7 +4,9 @@
 import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-const roots = ['src-tauri', 'src'];
+// .git included: a stray ._pack-*.idx in .git/objects/pack makes every git
+// command spew "error: non-monotonic index".
+const roots = ['src-tauri', 'src', '.git'];
 
 function walk(dir) {
   let entries;

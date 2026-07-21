@@ -83,6 +83,17 @@ export default {
       importing: "取り込み中…",
       importError:
         "取り込みに失敗しました——pet.json とスプライトシートを含むペットフォルダを選んでください。",
+      persona: "性格",
+      personaBuiltinHint: "空欄＝内蔵のペルソナを使います。",
+      personaPetHint:
+        "空欄＝名前と説明からペルソナを自動生成します。変更はこのペットの pet.json に書き戻されます。",
+      proactiveCooldown: "話しかけ間隔（分）",
+      proactiveMaxPerHour: "1 時間あたりの上限",
+      proactiveBuiltinHint:
+        "自発的な話しかけの頻度：間隔は最小の分数、上限 0＝無制限。",
+      proactivePetHint: "空欄＝全体設定を引き継ぎます（{{cooldown}} 分、1 時間 {{max}}）。",
+      proactiveUnlimited: "無制限",
+      petSageError: "ペットの pet.json への書き込みに失敗——性格と頻度は保存されていません。",
       privacyNote:
         "観察を有効にすると、Sage は定期的に現在のウィンドウタイトルを読み取り、必要に応じて画面のサムネイルを OpenRouter に送って「言及する価値があるか」を判断します。スクリーンショットはメモリ内でのみ処理され、送信後すぐ破棄されて保存されません。観察をオフにすれば、すべての取得と送信が完全に停止します。",
       cancel: "キャンセル",

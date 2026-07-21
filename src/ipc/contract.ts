@@ -43,6 +43,12 @@ export interface Settings {
   language: string;
   /** Selected companion id (folder under <config>/pets/). Empty = built-in Sage. */
   active_pet: string;
+  /** Custom persona for the built-in Sage companion. Empty = i18n default. */
+  custom_persona: string;
+  /** Minimum minutes between proactive asks; a pet's sage.proactive overrides. */
+  proactive_cooldown_minutes: number;
+  /** Max proactive bubbles per rolling hour; 0 = unlimited. Pet overrides. */
+  proactive_max_per_hour: number;
 }
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
@@ -60,6 +66,9 @@ export const DEFAULT_SETTINGS: Settings = {
   referer: "https://github.com/sage",
   language: "auto",
   active_pet: "",
+  custom_persona: "",
+  proactive_cooldown_minutes: 2,
+  proactive_max_per_hour: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -198,12 +207,19 @@ export interface PetProactive {
   maxPerHour?: number;
 }
 
+/** Manual theme override (from pet.json's `sage.theme`). */
+export interface PetTheme {
+  /** Accent as #rrggbb; absent ⇒ the UI auto-extracts a hue from the sprite. */
+  accent?: string;
+}
+
 /** A fully parsed pet manifest. */
 export interface Pet extends PetMeta {
   spritesheetPath: string;
   /** Custom system prompt; absent ⇒ Sage synthesizes one from name+description. */
   persona?: string;
   proactive?: PetProactive;
+  theme?: PetTheme;
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +246,7 @@ export const COMMANDS = {
   readPet: "read_pet",
   readPetAtlas: "read_pet_atlas",
   importPet: "import_pet",
+  updatePetSage: "update_pet_sage",
   getSettings: "get_settings",
   setSettings: "set_settings",
   captureScreen: "capture_screen",
@@ -285,6 +302,13 @@ export interface SageIpc {
    * Rejects when the chosen folder isn't a valid pet.
    */
   importPet(): Promise<PetMeta | null>;
+  /**
+   * Rewrite one pet's `sage` block in its pet.json. Blank persona / absent
+   * proactive numbers remove the corresponding keys (fall back to synthesized
+   * persona / global settings); every other manifest field is preserved.
+   * Rejects when the id is unknown.
+   */
+  updatePetSage(id: string, persona: string, proactive: PetProactive): Promise<void>;
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<void>;
   /** Capture the main screen as a JPEG data URL. Rejects when observe_enabled is false. */

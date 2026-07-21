@@ -83,6 +83,19 @@ export default {
       importing: "Importing…",
       importError:
         "Import failed — pick a pet folder containing a pet.json and its spritesheet.",
+      persona: "Personality",
+      personaBuiltinHint: "Leave empty to use the built-in persona.",
+      personaPetHint:
+        "Leave empty to synthesize one from the pet's name and description. Changes are written back to this pet's pet.json.",
+      proactiveCooldown: "Chatter interval (minutes)",
+      proactiveMaxPerHour: "Max per hour",
+      proactiveBuiltinHint:
+        "Proactive chatter cadence: the interval is the minimum gap in minutes; 0 for the cap = unlimited.",
+      proactivePetHint:
+        "Leave empty to inherit the global settings ({{cooldown}} min, {{max}} per hour).",
+      proactiveUnlimited: "unlimited",
+      petSageError:
+        "Failed to write the pet's pet.json — personality and cadence were not saved.",
       privacyNote:
         "When observation is on, Sage periodically reads the current window title and, when needed, sends a screen thumbnail to OpenRouter to decide whether anything is worth mentioning. Screenshots are processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all capture and upload entirely.",
       cancel: "Cancel",

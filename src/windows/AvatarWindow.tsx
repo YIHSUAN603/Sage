@@ -12,8 +12,7 @@ import { requireIpc } from "../store/ipc.ts";
 import { useCompanionName } from "../store/companion.ts";
 import { avatarMood, MOOD_EVENT, type AvatarMood, useChatStore } from "../store/chat.ts";
 import { useSettingsStore } from "../store/settings.ts";
-import { useSettingsSync } from "../store/settingsSync.ts";
-import { toggleChatWindow } from "./chatToggle.ts";
+import { syncBubblePosition, toggleChatWindow } from "./chatToggle.ts";
 import { PetSprite } from "./PetSprite.tsx";
 import type { AvatarGesture } from "./petAtlas.ts";
 import "./avatar.css";
@@ -60,17 +59,17 @@ export function AvatarWindow() {
   const grab = useRef<{ x: number; y: number } | null>(null);
   const dragCleanup = useRef<(() => void) | undefined>(undefined);
   const winRef = useRef<import("@tauri-apps/api/window").Window | null>(null);
-  const physPosRef = useRef<typeof import("@tauri-apps/api/dpi").PhysicalPosition | null>(null);
+  const logPosRef = useRef<typeof import("@tauri-apps/api/dpi").LogicalPosition | null>(null);
   const positioningWorks = useRef(false);
   useEffect(() => {
     if (!hasTauri()) return;
     void (async () => {
       try {
         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        const { PhysicalPosition } = await import("@tauri-apps/api/dpi");
+        const { LogicalPosition } = await import("@tauri-apps/api/dpi");
         const win = getCurrentWindow();
         winRef.current = win;
-        physPosRef.current = PhysicalPosition;
+        logPosRef.current = LogicalPosition;
         // (0,0) means the compositor hides the real position (Wayland) — a
         // reliable signal that setPosition won't work either.
         const pos = await win.outerPosition();
@@ -115,7 +114,6 @@ export function AvatarWindow() {
 
   // S5.1–S5.3 run here — the avatar webview is the only one always visible,
   // so its timers never get throttled. Badge shows while observing.
-  useSettingsSync();
   const { observing, devForceAsk, devFakeBubble } = useObservation();
   const pauseObservation = () =>
     void useSettingsStore.getState().save({ observe_enabled: false });
@@ -129,6 +127,47 @@ export function AvatarWindow() {
       const off = await listen<AvatarMood>(MOOD_EVENT, (event) => {
         setEventMood(event.payload);
       });
+      if (disposed) off();
+      else unlisten = off;
+    })();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // Keep the proactive bubble glued to the pet: whenever this window moves
+  // (our own setPosition during a drag, or a native compositor move), re-snap
+  // the bubble if it's showing. Syncs are serialized — at most one IPC
+  // round-trip in flight, with a single trailing catch-up so the bubble always
+  // lands on the final position.
+  useEffect(() => {
+    if (!hasTauri()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    let syncing = false;
+    let pending = false;
+    const sync = () => {
+      if (syncing) {
+        pending = true;
+        return;
+      }
+      syncing = true;
+      void syncBubblePosition()
+        .catch((err) => {
+          if (import.meta.env.DEV) console.error("[sage:bubble] sync failed", err);
+        })
+        .finally(() => {
+          syncing = false;
+          if (pending && !disposed) {
+            pending = false;
+            sync();
+          }
+        });
+    };
+    void (async () => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const off = await getCurrentWindow().onMoved(sync);
       if (disposed) off();
       else unlisten = off;
     })();
@@ -182,7 +221,6 @@ export function AvatarWindow() {
     dragging.current = true;
     setGesture(dx < 0 ? "run-left" : "run-right");
     const manual = positioningWorks.current;
-    const scale = window.devicePixelRatio || 1;
     let lastX = press.current?.x ?? 0;
 
     const onMove = (ev: PointerEvent) => {
@@ -194,11 +232,15 @@ export function AvatarWindow() {
       else if (ddx >= 1) setGesture("run-right");
       lastX = ev.screenX;
       const g = grab.current;
-      const PhysicalPosition = physPosRef.current;
-      if (g && PhysicalPosition && winRef.current) {
-        const left = Math.round((ev.screenX - g.x) * scale);
-        const top = Math.round((ev.screenY - g.y) * scale);
-        void winRef.current.setPosition(new PhysicalPosition(left, top)).catch((err) => {
+      const LogicalPosition = logPosRef.current;
+      if (g && LogicalPosition && winRef.current) {
+        // screenX/clientX are logical px; hand them to Tauri as-is so it
+        // converts with the window's *current* scale factor. Scaling to
+        // physical ourselves breaks the moment the window crosses onto a
+        // monitor with a different scale (mixed-DPI multi-monitor).
+        const left = Math.round(ev.screenX - g.x);
+        const top = Math.round(ev.screenY - g.y);
+        void winRef.current.setPosition(new LogicalPosition(left, top)).catch((err) => {
           if (import.meta.env.DEV) console.error("[sage:drag] setPosition failed", err);
         });
       }

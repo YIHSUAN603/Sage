@@ -15,7 +15,9 @@ import { requireIpc } from "../store/ipc.ts";
 import { useObservationStore } from "../store/observation.ts";
 import { useSettingsStore } from "../store/settings.ts";
 import { showBubbleWindow } from "../windows/chatToggle.ts";
+import { proactiveTuning } from "../store/persona.ts";
 import { createBubbleGate } from "./gate.ts";
+import { pruneHourWindow, underHourlyQuota } from "./quota.ts";
 import { createRunObserve } from "./runObserve.ts";
 import { createSampler } from "./sampler.ts";
 
@@ -25,15 +27,21 @@ async function broadcast(event: string, payload: unknown): Promise<void> {
   await emit(event, payload);
 }
 
-// Random spacing between observation asks. Dev builds use a short interval so
-// the whole capture → ask → bubble flow can be exercised in seconds; production
-// keeps the calm 2–5 min cadence.
-const ASK_INTERVAL = import.meta.env.DEV
-  ? { minMs: 15_000, maxMs: 30_000 }
-  : { minMs: 2 * 60_000, maxMs: 5 * 60_000 };
+// Random spacing between observation asks. Dev builds use a short fixed
+// interval so the whole capture → ask → bubble flow can be exercised in
+// seconds; production derives it from the effective cooldownMinutes (pet's
+// sage.proactive, else the settings default): random cooldown ~ 2.5×cooldown,
+// so the default of 2 minutes keeps the original calm 2–5 min cadence.
+const DEV_ASK_INTERVAL = { minMs: 15_000, maxMs: 30_000 };
 
-function nextAskDelay(): number {
-  return ASK_INTERVAL.minMs + Math.random() * (ASK_INTERVAL.maxMs - ASK_INTERVAL.minMs);
+async function nextAskDelay(): Promise<number> {
+  if (import.meta.env.DEV) {
+    const { minMs, maxMs } = DEV_ASK_INTERVAL;
+    return minMs + Math.random() * (maxMs - minMs);
+  }
+  const { cooldownMinutes } = await proactiveTuning();
+  const minMs = Math.max(0.1, cooldownMinutes) * 60_000;
+  return minMs + Math.random() * minMs * 1.5;
 }
 
 function devLog(...args: unknown[]): void {
@@ -64,8 +72,12 @@ export function useObservation(): ObservationHandle {
     if (!enabled) return;
     const ipc = requireIpc();
 
+    // When each bubble was shown — drives the maxPerHour quota.
+    let bubbleTimes: number[] = [];
+
     // Shared by the gate and the dev test button: store + broadcast + show.
     const presentBubble = (text: string, reason: string) => {
+      bubbleTimes = [...pruneHourWindow(bubbleTimes, Date.now()), Date.now()];
       devLog("bubble:", text, "| reason:", reason);
       useObservationStore.getState().pushBubble(text, reason);
       const bubbles = useObservationStore.getState().bubbles;
@@ -128,20 +140,31 @@ export function useObservation(): ObservationHandle {
       },
     });
 
-    // Time-driven observation: look immediately when observation turns on, then
-    // once every random 2–5 min. The model's SILENT reply is the only filter.
+    // Time-driven observation: look immediately when observation turns on,
+    // then on the cooldown-derived random cadence. The model's SILENT reply
+    // filters content; the maxPerHour quota skips the ask (and its LLM call)
+    // entirely once enough bubbles surfaced within the rolling hour.
     let askTimer: ReturnType<typeof setTimeout> | null = null;
-    const runAsk = () => {
-      void gate.forceAsk(i18n.t("gate.observeReason", { ns: "prompt" }));
-      askTimer = setTimeout(runAsk, nextAskDelay());
+    let stopped = false;
+    const runAsk = async () => {
+      const { maxPerHour } = await proactiveTuning();
+      if (underHourlyQuota(bubbleTimes, Date.now(), maxPerHour)) {
+        void gate.forceAsk(i18n.t("gate.observeReason", { ns: "prompt" }));
+      } else {
+        devLog("ask skipped: hourly bubble quota reached (max", maxPerHour, "/h)");
+      }
+      const delay = await nextAskDelay();
+      if (stopped) return;
+      askTimer = setTimeout(() => void runAsk(), delay);
     };
 
     devLog("observation started, interval", Math.max(2, intervalSec), "s");
     sampler.start();
-    askTimer = setTimeout(runAsk, 0);
+    askTimer = setTimeout(() => void runAsk(), 0);
     return () => {
       devLog("observation stopped");
       devRef.current = null;
+      stopped = true;
       if (askTimer) clearTimeout(askTimer);
       sampler.stop();
       gate.reset();

@@ -120,7 +120,7 @@
 
 .msg-user .msg-bubble {
   background: var(--leaf-deep);
-  color: #f4f8ef;
+  color: var(--on-accent);
   border-bottom-right-radius: 5px;
 }
 
@@ -295,7 +295,7 @@
   font-size: 1rem;
   line-height: 1;
   cursor: pointer;
-  color: #f4f8ef;
+  color: var(--on-accent);
   background: var(--leaf-deep);
 }
 
@@ -334,7 +334,7 @@
   border-radius: 10px;
   padding: 8px 12px;
   background: var(--leaf-deep);
-  color: #f4f8ef;
+  color: var(--on-accent);
   font: inherit;
   cursor: pointer;
 }
@@ -385,6 +385,7 @@
 .field input[type="text"],
 .field input[type="password"],
 .field input[type="number"],
+.field textarea,
 .field select {
   padding: 7px 9px;
   border: 1.5px solid var(--bubble-border);
@@ -397,8 +398,15 @@
 }
 
 .field input:focus-visible,
+.field textarea:focus-visible,
 .field select:focus-visible {
   border-color: var(--leaf);
+}
+
+.field textarea {
+  resize: vertical;
+  min-height: 58px;
+  line-height: 1.5;
 }
 
 .field-row {
@@ -480,7 +488,7 @@
 .dialog-actions button.primary {
   background: var(--leaf-deep);
   border-color: var(--leaf-deep);
-  color: #f4f8ef;
+  color: var(--on-accent);
 }
 
 .dialog-actions button.primary:hover:not(:disabled) {

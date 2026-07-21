@@ -140,8 +140,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #7fa36f;
-  border: 1px solid #5e7f52;
+  background: var(--leaf);
+  border: 1px solid var(--leaf-deep);
   animation: sage-dot 1.2s ease-in-out infinite;
 }
 
@@ -224,8 +224,8 @@
   height: 22px;
   padding: 0;
   border-radius: 50%;
-  border: 1.5px solid #5e7f52;
-  background: #f4f8ef;
+  border: 1.5px solid var(--leaf-deep);
+  background: var(--on-accent);
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
@@ -247,8 +247,8 @@
 }
 
 .dev-test-badge:hover {
-  background: #cfe3c4;
-  border-color: #5e7f52;
+  background: var(--leaf-mist);
+  border-color: var(--leaf-deep);
 }
 
 @keyframes observe-pulse {

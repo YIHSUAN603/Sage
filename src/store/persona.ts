@@ -21,7 +21,10 @@ async function activePet(): Promise<Pet | null> {
 /** The character identity + tone. Used by chat, and as the gate's base. */
 export async function personaIdentity(): Promise<string> {
   const pet = await activePet();
-  if (!pet) return i18n.t("persona.default", { ns: "prompt" });
+  if (!pet) {
+    const custom = useSettingsStore.getState().settings.custom_persona.trim();
+    return custom || i18n.t("persona.default", { ns: "prompt" });
+  }
   if (pet.persona) return pet.persona;
   const base = i18n.t("persona.synthBase", { ns: "prompt", name: pet.displayName });
   const desc = pet.description.trim();
@@ -32,6 +35,27 @@ export async function personaIdentity(): Promise<string> {
 export async function gateSystem(): Promise<string> {
   const persona = await personaIdentity();
   return `${persona}\n${i18n.t("gate.protocol", { ns: "prompt" })}`;
+}
+
+/** Effective proactive tuning for the observe loop. */
+export interface ProactiveTuning {
+  /** Minimum minutes between proactive asks. */
+  cooldownMinutes: number;
+  /** Max bubbles per rolling hour; 0 = unlimited. */
+  maxPerHour: number;
+}
+
+/**
+ * Resolve the proactive-chatter tuning: the active pet's `sage.proactive`
+ * overrides the global settings values (which carry the built-in defaults).
+ */
+export async function proactiveTuning(): Promise<ProactiveTuning> {
+  const s = useSettingsStore.getState().settings;
+  const pet = await activePet();
+  return {
+    cooldownMinutes: pet?.proactive?.cooldownMinutes ?? s.proactive_cooldown_minutes,
+    maxPerHour: pet?.proactive?.maxPerHour ?? s.proactive_max_per_hour,
+  };
 }
 
 /**

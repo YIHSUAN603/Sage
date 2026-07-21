@@ -1,5 +1,7 @@
-/* Global base for both transparent companion windows (avatar / chat).
-   Palette: sage greens on a warm cream card — see windows/*.css. */
+/* Global base for the transparent companion windows (avatar / chat / bubble).
+   Palette: sage greens on a warm cream card — see windows/*.css. When a
+   companion is active, useCompanionTheme injects a <style> that re-hues
+   these variables to the pet's accent (windows/companionTheme.ts). */
 
 :root {
   --leaf: #7fa36f;
@@ -7,6 +9,7 @@
   --leaf-mist: #e9f0e2;
   --ink: #2f3a2e;
   --ink-soft: #6b7566;
+  --on-accent: #f4f8ef;
 
   --bubble-bg: #fbfaf4;
   --bubble-border: #d8e0ce;

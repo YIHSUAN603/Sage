@@ -69,6 +69,7 @@ pub fn run() {
             pets::read_pet,
             pets::read_pet_atlas,
             pets::import_pet,
+            pets::update_pet_sage,
             llm::chat_stream,
             agent_cli::agent_stream,
             agent_cli::check_agent_cli,
