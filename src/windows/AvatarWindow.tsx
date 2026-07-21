@@ -3,9 +3,10 @@
 // a click (mousedown/mouseup within a small threshold) toggles the chat
 // bubble. Mood (idle/thinking/talking) is driven by the chat window over a
 // Tauri event, falling back to the local chat store in pure-browser dev.
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { useObservation } from "../observe/runner.ts";
+import { BUBBLE_EVENT } from "../events.ts";
 import { hasTauri } from "../runtime.ts";
 import { requireIpc } from "../store/ipc.ts";
 import { useCompanionName } from "../store/companion.ts";
@@ -14,10 +15,17 @@ import { useSettingsStore } from "../store/settings.ts";
 import { useSettingsSync } from "../store/settingsSync.ts";
 import { toggleChatWindow } from "./chatToggle.ts";
 import { PetSprite } from "./PetSprite.tsx";
+import type { AvatarGesture } from "./petAtlas.ts";
 import "./avatar.css";
 
 /** Movement beyond this many px turns a press into a window drag. */
 const DRAG_THRESHOLD = 4;
+
+// Transient gesture timings (ms). Jump lasts one jumping cycle; after this much
+// idle the pet runs a lap (out then back, each half this long).
+const JUMP_MS = 840;
+const IDLE_RUN_AFTER_MS = 90_000;
+const RUN_LAP_HALF_MS = 800;
 
 export function AvatarWindow() {
   const { t } = useTranslation();
@@ -25,7 +33,60 @@ export function AvatarWindow() {
   const localMood = useChatStore(avatarMood);
   const [eventMood, setEventMood] = useState<AvatarMood | null>(null);
   const mood = eventMood ?? localMood;
+
+  // Transient gesture that briefly overrides the mood row on the spritesheet
+  // (drag → run, bubble → jump, long idle → run a lap). Fixed-duration gestures
+  // go through playGesture; the drag gesture is held for the whole drag below.
+  const [gesture, setGesture] = useState<AvatarGesture | null>(null);
+  const gestureTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const lapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const playGesture = (g: AvatarGesture, ms: number) => {
+    clearTimeout(gestureTimer.current);
+    setGesture(g);
+    gestureTimer.current = setTimeout(() => setGesture(null), ms);
+  };
+
+  // Dragging has two paths, chosen by whether window positioning actually works
+  // (probed once at startup):
+  //  • positioning works (X11 / Windows / macOS) → we move the window ourselves
+  //    with setPosition; pointer events keep streaming, so direction updates
+  //    live mid-drag and release is caught immediately.
+  //  • positioning broken (Wayland/WSLg, outerPosition returns (0,0)) → only a
+  //    native compositor move works, during which the pointer coords the webview
+  //    sees are noise; we fix the direction at drag start and just catch release.
   const press = useRef<{ x: number; y: number } | null>(null);
+  const dragging = useRef(false);
+  const grab = useRef<{ x: number; y: number } | null>(null);
+  const dragCleanup = useRef<(() => void) | undefined>(undefined);
+  const winRef = useRef<import("@tauri-apps/api/window").Window | null>(null);
+  const physPosRef = useRef<typeof import("@tauri-apps/api/dpi").PhysicalPosition | null>(null);
+  const positioningWorks = useRef(false);
+  useEffect(() => {
+    if (!hasTauri()) return;
+    void (async () => {
+      try {
+        const { getCurrentWindow } = await import("@tauri-apps/api/window");
+        const { PhysicalPosition } = await import("@tauri-apps/api/dpi");
+        const win = getCurrentWindow();
+        winRef.current = win;
+        physPosRef.current = PhysicalPosition;
+        // (0,0) means the compositor hides the real position (Wayland) — a
+        // reliable signal that setPosition won't work either.
+        const pos = await win.outerPosition();
+        positioningWorks.current = pos.x !== 0 || pos.y !== 0;
+      } catch (err) {
+        if (import.meta.env.DEV) console.error("[sage:drag] init failed", err);
+      }
+    })();
+  }, []);
+  useEffect(
+    () => () => {
+      clearTimeout(gestureTimer.current);
+      dragCleanup.current?.();
+    },
+    [],
+  );
 
   // Selected companion: when one is set, render its spritesheet; on any load
   // failure (or none selected) fall back to the built-in SVG. Atlas is fetched
@@ -77,33 +138,132 @@ export function AvatarWindow() {
     };
   }, []);
 
-  const onMouseDown = (e: ReactMouseEvent) => {
-    if (e.button !== 0) return;
-    press.current = { x: e.screenX, y: e.screenY };
-  };
+  // Proactive bubble → jump. The bubble is broadcast globally (runner.ts), so
+  // this window receives its own emit too.
+  useEffect(() => {
+    if (!hasTauri()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void (async () => {
+      const { listen } = await import("@tauri-apps/api/event");
+      const off = await listen(BUBBLE_EVENT, () => playGesture("jump", JUMP_MS));
+      if (disposed) off();
+      else unlisten = off;
+    })();
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, []);
 
-  const onMouseMove = (e: ReactMouseEvent) => {
-    if (!press.current) return;
-    const dx = e.screenX - press.current.x;
-    const dy = e.screenY - press.current.y;
-    if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
-    press.current = null; // it's a drag, not a click
-    if (hasTauri()) {
-      void (async () => {
-        const { getCurrentWindow } = await import("@tauri-apps/api/window");
-        await getCurrentWindow().startDragging();
-      })();
+  // Long idle → run a lap (out then back). Keyed on mood only: leaving idle
+  // clears the countdown and drops any leftover run gesture so the mood row
+  // (thinking/talking) takes over immediately.
+  useEffect(() => {
+    if (mood !== "idle") return;
+    idleTimer.current = setTimeout(() => {
+      setGesture("run-right");
+      lapTimer.current = setTimeout(() => {
+        setGesture("run-left");
+        lapTimer.current = setTimeout(() => setGesture(null), RUN_LAP_HALF_MS);
+      }, RUN_LAP_HALF_MS);
+    }, IDLE_RUN_AFTER_MS);
+    return () => {
+      clearTimeout(idleTimer.current);
+      clearTimeout(lapTimer.current);
+      setGesture((g) => (g === "run-left" || g === "run-right" ? null : g));
+    };
+  }, [mood]);
+
+  // Begin a drag (threshold crossed). Follow the pointer on the window so we
+  // catch every move/release regardless of which path is active. `dx` is the
+  // opening motion, used for the initial run direction.
+  const beginDrag = (dx: number) => {
+    dragging.current = true;
+    setGesture(dx < 0 ? "run-left" : "run-right");
+    const manual = positioningWorks.current;
+    const scale = window.devicePixelRatio || 1;
+    let lastX = press.current?.x ?? 0;
+
+    const onMove = (ev: PointerEvent) => {
+      // Only trust coords for direction where positioning works — under a
+      // Wayland compositor move they're noise, so keep the opening direction.
+      if (!manual) return;
+      const ddx = ev.screenX - lastX;
+      if (ddx <= -1) setGesture("run-left");
+      else if (ddx >= 1) setGesture("run-right");
+      lastX = ev.screenX;
+      const g = grab.current;
+      const PhysicalPosition = physPosRef.current;
+      if (g && PhysicalPosition && winRef.current) {
+        const left = Math.round((ev.screenX - g.x) * scale);
+        const top = Math.round((ev.screenY - g.y) * scale);
+        void winRef.current.setPosition(new PhysicalPosition(left, top)).catch((err) => {
+          if (import.meta.env.DEV) console.error("[sage:drag] setPosition failed", err);
+        });
+      }
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("blur", finish);
+      dragCleanup.current = undefined;
+      press.current = null;
+      dragging.current = false;
+      grab.current = null;
+      setGesture(null); // release → stop running immediately
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("blur", finish);
+    dragCleanup.current = finish;
+
+    // Wayland: hand the move to the compositor (the only thing that works there).
+    // Elsewhere: we move the window ourselves in onMove via setPosition.
+    if (!manual) {
+      void winRef.current?.startDragging().catch((err) => {
+        if (import.meta.env.DEV) console.error("[sage:drag] startDragging failed", err);
+      });
     }
   };
 
-  const onMouseUp = () => {
-    if (!press.current) return;
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (e.button !== 0) return;
+    press.current = { x: e.screenX, y: e.screenY };
+    dragging.current = false;
+    // Grab offset within the window, so the manual path can keep this point under
+    // the cursor via setPosition. Unused on the Wayland (native) path.
+    grab.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (!press.current || dragging.current) return;
+    const dx = e.screenX - press.current.x;
+    const dy = e.screenY - press.current.y;
+    if (Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
+    // Manual path: capture so a fast cursor that briefly outruns the window still
+    // delivers moves (auto-releases on pointerup). Not used on the native path.
+    if (positioningWorks.current) {
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* unsupported — fine */
+      }
+    }
+    beginDrag(dx); // crossed the threshold — it's a drag, not a click
+  };
+
+  const onPointerUp = () => {
+    // A drag ends via the global listeners in beginDrag; here we only handle the
+    // no-drag case: a plain click toggles the chat window.
+    if (!press.current || dragging.current) return;
     press.current = null;
+    grab.current = null;
     void toggleChatWindow();
   };
 
   return (
-    <div className="avatar-stage" data-tauri-drag-region>
+    <div className="avatar-stage">
       {observing && (
         <button
           type="button"
@@ -131,16 +291,13 @@ export function AvatarWindow() {
         role="button"
         aria-label={t("avatar.toggleChat")}
         title={t("avatar.sprite", { name })}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={() => {
-          press.current = null;
-        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
       >
         <div className="sprite-bob">
           {atlasUrl ? (
-            <PetSprite atlasUrl={atlasUrl} mood={mood} />
+            <PetSprite atlasUrl={atlasUrl} mood={mood} gesture={gesture} />
           ) : (
           <svg
             className="sprite-svg"

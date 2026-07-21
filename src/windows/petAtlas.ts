@@ -45,3 +45,20 @@ export function rowForMood(mood: AvatarMood): number {
   const row = MOOD_ROW[mood] ?? 0;
   return row >= 0 && row < ROWS.length ? row : 0;
 }
+
+// Transient interaction gestures — UI-only, not derived from chat state. The
+// avatar window plays one to briefly override the mood row (drag → run, bubble
+// → jump, long idle → run a lap), then reverts to the mood row.
+export type AvatarGesture = "run-left" | "run-right" | "jump";
+
+export const GESTURE_ROW: Record<AvatarGesture, number> = {
+  "run-left": 2, // running-left
+  "run-right": 1, // running-right
+  jump: 4, // jumping
+};
+
+/** Row index for a gesture, clamped like rowForMood. */
+export function rowForGesture(gesture: AvatarGesture): number {
+  const row = GESTURE_ROW[gesture] ?? 0;
+  return row >= 0 && row < ROWS.length ? row : 0;
+}

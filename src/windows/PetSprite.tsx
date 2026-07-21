@@ -5,11 +5,13 @@
 // prefers-reduced-motion by holding the first frame.
 import { useEffect, useRef, useState } from "react";
 import type { AvatarMood } from "../store/chat.ts";
-import { ATLAS, ROWS, rowForMood } from "./petAtlas.ts";
+import { ATLAS, type AvatarGesture, ROWS, rowForGesture, rowForMood } from "./petAtlas.ts";
 
 interface PetSpriteProps {
   atlasUrl: string;
   mood: AvatarMood;
+  /** Transient gesture that overrides the mood row while set (drag/bubble/idle). */
+  gesture?: AvatarGesture | null;
   /** Cell scale factor. Default 0.88 → a ~169×183 footprint, like the SVG sprite. */
   scale?: number;
 }
@@ -27,12 +29,30 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function PetSprite({ atlasUrl, mood, scale = 0.88 }: PetSpriteProps) {
+export function PetSprite({ atlasUrl, mood, gesture, scale = 0.88 }: PetSpriteProps) {
   const reduced = usePrefersReducedMotion();
   const [frame, setFrame] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const row = rowForMood(mood);
+  // A gesture temporarily wins over the mood row; the frame loop below re-arms
+  // on row change, so playing and reverting both animate for free.
+  const row = gesture ? rowForGesture(gesture) : rowForMood(mood);
+
+  // The cell size (192×208) is fixed across sprite versions, but the total
+  // sheet height is not: v1 sheets are 9 rows (1872px), v2 sheets 11 rows
+  // (2288px). Read the real dimensions from the image so backgroundSize matches
+  // it exactly — otherwise the image is squished to the hardcoded size and each
+  // cell sample bleeds into the neighbouring row. Falls back to the documented
+  // v1 size until the image loads.
+  const [sheet, setSheet] = useState<{ w: number; h: number }>({
+    w: ATLAS.sheetW,
+    h: ATLAS.sheetH,
+  });
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setSheet({ w: img.naturalWidth, h: img.naturalHeight });
+    img.src = atlasUrl;
+  }, [atlasUrl]);
 
   // Re-arm the frame loop whenever the row (mood) changes. Each frame is shown
   // for its own duration, then we advance and reschedule; single-frame rows or
@@ -69,7 +89,7 @@ export function PetSprite({ atlasUrl, mood, scale = 0.88 }: PetSpriteProps) {
           transformOrigin: "top left",
           backgroundImage: `url(${atlasUrl})`,
           backgroundRepeat: "no-repeat",
-          backgroundSize: `${ATLAS.sheetW}px ${ATLAS.sheetH}px`,
+          backgroundSize: `${sheet.w}px ${sheet.h}px`,
           backgroundPosition: `-${frame * ATLAS.cellW}px -${row * ATLAS.cellH}px`,
           imageRendering: "pixelated",
         }}
