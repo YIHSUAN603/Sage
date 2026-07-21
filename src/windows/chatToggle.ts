@@ -52,9 +52,35 @@ async function showNextToAvatar(label: string, side: SnapSide, focus: boolean) {
     y = Math.max(minY, Math.min(y, maxY - targetSize.height));
   }
 
-  await target.setPosition(new PhysicalPosition(Math.round(x), Math.round(y)));
+  // On Linux/WSL (GTK) a still-hidden window ignores setPosition — the WM
+  // assigns its own (cascading, "random") spot when the window maps, and
+  // show() resolves before the map finishes, so a single post-show setPosition
+  // still races the map. Re-assert the position until outerPosition() reports
+  // it stuck (capped, so it always self-terminates).
+  const pos = new PhysicalPosition(Math.round(x), Math.round(y));
+  await target.setPosition(pos);
   await target.show();
   if (focus) await target.setFocus();
+  for (let i = 0; i < 8; i++) {
+    await target.setPosition(pos);
+    const now = await target.outerPosition();
+    if (Math.abs(now.x - pos.x) <= 2 && Math.abs(now.y - pos.y) <= 2) break;
+    await new Promise((r) => setTimeout(r, 16));
+  }
+}
+
+/** Re-assert the avatar's always-on-top so it comes back to the top layer.
+ * Best-effort: never let a raise failure suppress the bubble itself. */
+async function raiseAvatar() {
+  try {
+    const { Window } = await import("@tauri-apps/api/window");
+    const avatar = await Window.getByLabel("avatar");
+    if (!avatar) return;
+    await avatar.setAlwaysOnTop(false);
+    await avatar.setAlwaysOnTop(true);
+  } catch (err) {
+    console.warn("[sage] raiseAvatar failed", err);
+  }
 }
 
 /** Show the chat bubble snapped next to the avatar (no-op outside Tauri). */
@@ -69,6 +95,7 @@ export async function showChatWindow(): Promise<void> {
 /** Show the proactive speech bubble above the avatar, without stealing focus. */
 export async function showBubbleWindow(): Promise<void> {
   if (!hasTauri()) return;
+  await raiseAvatar();
   await showNextToAvatar("bubble", "top", false);
 }
 
