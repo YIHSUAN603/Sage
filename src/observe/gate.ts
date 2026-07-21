@@ -1,70 +1,50 @@
-// S5.3 — Bubble gate: decides when the companion actually speaks up.
-// Cheap first (assessNotable over window titles — zero API cost), and only
-// when a trigger survives the cooldown / rate caps does it spend quota:
-// screenshot (when available) + one observe-model call that must answer with
-// a short remark or the literal word SILENT. Clock injectable for tests.
+// S5.3 — Bubble gate: turns one observation into (maybe) a spoken remark.
+// Time-driven — the runner calls forceAsk on a random cadence; the gate just
+// keeps a short window-title history for context and, on each ask, captures a
+// screenshot (when available) + runs one observe-model call that must answer
+// with a short remark or the literal word SILENT.
 import i18n from "../i18n/index.ts";
 import type { ChatMessage, ContentPart, SageIpc } from "../ipc/contract.ts";
 import { gateSystem } from "../store/persona.ts";
 import { createDeltaAccumulator } from "../llm/openrouter.ts";
-import {
-  assessNotable,
-  type NotableOptions,
-  type WindowSample,
-} from "./notable.ts";
+
+/** One active-window observation, kept for the ask prompt's recent-activity list. */
+export interface WindowSample {
+  app_name: string;
+  title: string;
+  /** Sample time, epoch milliseconds. */
+  at: number;
+}
 
 export interface GateOptions {
   ipc: Pick<SageIpc, "captureScreen" | "chatStream">;
   /** Observe model id (caller applies the chat-model fallback). Empty ⇒ stay silent. */
   getModel(): string;
-  /** A remark that passed every gate — show it as a bubble. */
+  /** A remark that passed the gate — show it as a bubble. */
   onBubble(text: string, reason: string): void;
-  /** Minimum time between model asks. Default 10 min. */
-  cooldownMs?: number;
-  /** Hard cap on model asks per rolling hour. Default 4. */
-  maxPerHour?: number;
-  notableOptions?: NotableOptions;
-  now?(): number;
-  /** Samples kept for the heuristics. Default 60. */
+  /** Samples kept for the recent-activity context. Default 60. */
   historyLimit?: number;
   /** Diagnostic trace of each ask (capture ok/fail, stream error, reply). */
   onDebug?(message: string): void;
 }
 
 export interface BubbleGate {
-  /** Feed one window sample; may (rarely) end in an onBubble call. */
-  offer(sample: WindowSample): Promise<void>;
+  /** Feed one window sample into the recent-activity history (no ask). */
+  record(sample: WindowSample): void;
   /**
-   * Skip every gate (notable/cooldown/rate) and ask the model right now —
-   * the "user explicitly asked what Sage sees" path, also used by dev tests.
-   * Bubbles a genuine reply via onBubble; resolves with it, or null when the
-   * model stayed silent or the call failed.
+   * Capture + ask the model right now. Bubbles a genuine reply via onBubble;
+   * resolves with it, or null when the model stayed silent or the call failed.
    */
   forceAsk(reason?: string): Promise<string | null>;
-  /** Drop history and cooldown state (observation was turned off/on). */
+  /** Drop history (observation was turned off/on). */
   reset(): void;
 }
 
-const HOUR_MS = 3_600_000;
-
-/** Collapse digits so a persisting condition ("16 min stuck" → "17 min stuck")
- * counts as the same trigger and never re-asks until it clears. */
-function reasonKey(reason: string): string {
-  return reason.replace(/\d+/g, "#");
-}
-
 export function createBubbleGate(options: GateOptions): BubbleGate {
-  const now = options.now ?? Date.now;
-  const cooldownMs = options.cooldownMs ?? 10 * 60_000;
-  const maxPerHour = options.maxPerHour ?? 4;
   const historyLimit = options.historyLimit ?? 60;
 
   let samples: WindowSample[] = [];
   let asking = false;
-  let lastAskedAt = -Infinity;
-  let askTimes: number[] = [];
-  /** Key of the trigger we last spent an ask on; "" once it clears. */
-  let lastKey = "";
 
   const debug = options.onDebug ?? (() => {});
 
@@ -75,10 +55,6 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       debug("沒有可用的模型（觀察/聊天模型都未設定）");
       return null; // nothing configured — never burn an error on the user
     }
-
-    const at = now();
-    lastAskedAt = at;
-    askTimes = [...askTimes.filter((t) => at - t < HOUR_MS), at];
 
     // Screenshot is best-effort: permission denied / observation just turned
     // off falls back to the title-only prompt (PLAN privacy constraint).
@@ -142,30 +118,8 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
   }
 
   return {
-    async offer(sample) {
+    record(sample) {
       samples = [...samples, sample].slice(-historyLimit);
-      if (asking) return;
-
-      const result = assessNotable(samples, options.notableOptions);
-      if (!result.notable) {
-        lastKey = ""; // condition cleared — the next trigger may ask again
-        return;
-      }
-      const key = reasonKey(result.reason);
-      if (key === lastKey) return;
-
-      const at = now();
-      if (at - lastAskedAt < cooldownMs) return;
-      if (askTimes.filter((t) => at - t < HOUR_MS).length >= maxPerHour) return;
-
-      lastKey = key;
-      asking = true;
-      try {
-        const reply = await ask(result.reason);
-        if (reply) options.onBubble(reply, result.reason);
-      } finally {
-        asking = false;
-      }
     },
 
     async forceAsk(reason = i18n.t("gate.forceAskReason", { ns: "prompt" })) {
@@ -183,9 +137,6 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     reset() {
       samples = [];
       asking = false;
-      lastAskedAt = -Infinity;
-      askTimes = [];
-      lastKey = "";
     },
   };
 }

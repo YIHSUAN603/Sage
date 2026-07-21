@@ -88,6 +88,7 @@ export default {
       withScreenshot: "(A thumbnail of the current screen is attached.)",
       noScreenshot: "(Screenshot unavailable — only window titles to go on.)",
       forceAskReason: "The user explicitly asked about the current context",
+      observeReason: "Routine check-in on what the user is doing",
     },
     context: {
       intro:

@@ -1,14 +1,15 @@
 // S5.1/S5.3/S5.4 glue — runs in the avatar window (the only always-visible
 // webview, so its timers are never throttled). Wires sampler → observation
-// store + cross-window context broadcast + bubble gate, honoring the settings
-// switch: observe_enabled off ⇒ everything stops, nothing is captured.
-import { useEffect, useRef, useState } from "react";
+// store + cross-window context broadcast + a time-driven bubble gate, honoring
+// the settings switch: observe_enabled off ⇒ everything stops, nothing captured.
+import { useEffect, useRef } from "react";
 import {
   BUBBLE_EVENT,
   CONTEXT_EVENT,
   type BubbleEventPayload,
   type ContextEventPayload,
 } from "../events.ts";
+import i18n from "../i18n/index.ts";
 import { hasTauri } from "../runtime.ts";
 import { requireIpc } from "../store/ipc.ts";
 import { useObservationStore } from "../store/observation.ts";
@@ -23,20 +24,16 @@ async function broadcast(event: string, payload: unknown): Promise<void> {
   await emit(event, payload);
 }
 
-// Dev builds shrink the trigger thresholds and cooldown so the whole bubble
-// flow can be exercised in a few minutes (PLAN S6.3 manual E2E). Production
-// keeps the calm defaults from notable.ts / gate.ts.
-const DEV_TUNING = import.meta.env.DEV
-  ? {
-      notableOptions: {
-        stuckMs: 2 * 60_000,
-        rapidSwitchWindowMs: 60_000,
-        rapidSwitchCount: 4,
-        idleGapMs: 2 * 60_000,
-      },
-      cooldownMs: 60_000,
-    }
-  : {};
+// Random spacing between observation asks. Dev builds use a short interval so
+// the whole capture → ask → bubble flow can be exercised in seconds; production
+// keeps the calm 2–5 min cadence.
+const ASK_INTERVAL = import.meta.env.DEV
+  ? { minMs: 15_000, maxMs: 30_000 }
+  : { minMs: 2 * 60_000, maxMs: 5 * 60_000 };
+
+function nextAskDelay(): number {
+  return ASK_INTERVAL.minMs + Math.random() * (ASK_INTERVAL.maxMs - ASK_INTERVAL.minMs);
+}
 
 function devLog(...args: unknown[]): void {
   if (import.meta.env.DEV) console.info("[sage:observe]", ...args);
@@ -60,37 +57,7 @@ interface DevHelpers {
 export function useObservation(): ObservationHandle {
   const enabled = useSettingsStore((s) => s.settings.observe_enabled);
   const intervalSec = useSettingsStore((s) => s.settings.observe_interval);
-  const activePet = useSettingsStore((s) => s.settings.active_pet);
   const devRef = useRef<DevHelpers | null>(null);
-
-  // The active companion may override the gate's cadence via pet.json's
-  // `sage.proactive`. Loaded here (async) so the main effect can re-create the
-  // gate with the new numbers when the pet changes. DEV_TUNING still wins.
-  const [petGate, setPetGate] = useState<{ cooldownMs?: number; maxPerHour?: number }>({});
-  useEffect(() => {
-    let cancelled = false;
-    const id = activePet.trim();
-    if (!id) {
-      setPetGate({});
-      return;
-    }
-    void (async () => {
-      try {
-        const pet = await requireIpc().readPet(id);
-        if (cancelled) return;
-        const p = pet.proactive ?? {};
-        const next: { cooldownMs?: number; maxPerHour?: number } = {};
-        if (typeof p.cooldownMinutes === "number") next.cooldownMs = p.cooldownMinutes * 60_000;
-        if (typeof p.maxPerHour === "number") next.maxPerHour = p.maxPerHour;
-        setPetGate(next);
-      } catch {
-        if (!cancelled) setPetGate({});
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [activePet]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -114,8 +81,6 @@ export function useObservation(): ObservationHandle {
     // dev test bubble surfaces it so failures explain themselves.
     let askTrail: string[] = [];
     const gate = createBubbleGate({
-      ...petGate,
-      ...DEV_TUNING,
       ipc,
       getModel() {
         const s = useSettingsStore.getState().settings;
@@ -131,7 +96,7 @@ export function useObservation(): ObservationHandle {
     if (import.meta.env.DEV) {
       devRef.current = {
         forceAsk() {
-          devLog("forceAsk: skipping every gate, asking the model now…");
+          devLog("forceAsk: asking the model now…");
           askTrail = [];
           void gate.forceAsk("開發測試：立即觀察一次").then((reply) => {
             // A genuine reply already bubbled via onBubble — surface the
@@ -160,20 +125,30 @@ export function useObservation(): ObservationHandle {
         const payload: ContextEventPayload = { window, at };
         void broadcast(CONTEXT_EVENT, payload);
         if (window) {
-          void gate.offer({ app_name: window.app_name, title: window.title, at });
+          gate.record({ app_name: window.app_name, title: window.title, at });
         }
       },
     });
 
+    // Time-driven observation: look immediately when observation turns on, then
+    // once every random 2–5 min. The model's SILENT reply is the only filter.
+    let askTimer: ReturnType<typeof setTimeout> | null = null;
+    const runAsk = () => {
+      void gate.forceAsk(i18n.t("gate.observeReason", { ns: "prompt" }));
+      askTimer = setTimeout(runAsk, nextAskDelay());
+    };
+
     devLog("observation started, interval", Math.max(2, intervalSec), "s");
     sampler.start();
+    askTimer = setTimeout(runAsk, 0);
     return () => {
       devLog("observation stopped");
       devRef.current = null;
+      if (askTimer) clearTimeout(askTimer);
       sampler.stop();
       gate.reset();
     };
-  }, [enabled, intervalSec, petGate]);
+  }, [enabled, intervalSec]);
 
   const devAvailable = import.meta.env.DEV && enabled;
   return {

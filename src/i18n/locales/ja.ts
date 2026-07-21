@@ -88,6 +88,7 @@ export default {
       withScreenshot: "（現在の画面のサムネイルを添付）",
       noScreenshot: "（スクリーンショットを取得できないため、ウィンドウタイトルのみ参考）",
       forceAskReason: "ユーザーが現在のコンテキストについて自ら質問した",
+      observeReason: "定期的にユーザーの様子をうかがう",
     },
     context: {
       intro:

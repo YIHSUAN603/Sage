@@ -86,6 +86,7 @@ export default {
       withScreenshot: "（附上目前的螢幕縮圖）",
       noScreenshot: "（無法取得螢幕截圖，只有視窗標題可參考）",
       forceAskReason: "使用者主動詢問目前脈絡",
+      observeReason: "定期看看使用者現在在忙什麼",
     },
     context: {
       intro:

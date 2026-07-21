@@ -86,6 +86,7 @@ export default {
       withScreenshot: "（附上当前的屏幕缩略图）",
       noScreenshot: "（无法获取屏幕截图，只有窗口标题可参考）",
       forceAskReason: "用户主动询问当前脉络",
+      observeReason: "定期看看用户现在在忙什么",
     },
     context: {
       intro:
