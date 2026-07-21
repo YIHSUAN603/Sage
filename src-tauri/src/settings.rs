@@ -19,6 +19,10 @@ pub struct Settings {
     /// Model to pass the agent CLI; empty ⇒ the CLI's own default.
     #[serde(default)]
     pub agent_cli_model: String,
+    /// Tool permission tier for agent-CLI chat: "read_only" | "edit" | "full".
+    /// Observation is always read-only regardless of this value.
+    #[serde(default = "default_agent_permission")]
+    pub agent_cli_permission: String,
     #[serde(default)]
     pub api_key: String,
     /// Model used for chat + tool calling (must support `tools`).
@@ -57,6 +61,10 @@ fn default_agent_cli() -> String {
     "claude".into()
 }
 
+fn default_agent_permission() -> String {
+    "read_only".into()
+}
+
 fn default_language() -> String {
     "auto".into()
 }
@@ -68,6 +76,7 @@ impl Default for Settings {
             agent_cli: default_agent_cli(),
             agent_cli_path: String::new(),
             agent_cli_model: String::new(),
+            agent_cli_permission: default_agent_permission(),
             api_key: String::new(),
             chat_model: String::new(),
             observe_model: String::new(),

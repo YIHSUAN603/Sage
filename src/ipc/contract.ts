@@ -22,6 +22,12 @@ export interface Settings {
   agent_cli_path: string;
   /** Model to pass the agent CLI (claude --model / codex -m); empty ⇒ CLI default. */
   agent_cli_model: string;
+  /**
+   * Tool permission tier for agent-CLI chat. Observation is always read-only.
+   * "read_only": read/search tools only; "edit": file edits + skills, no
+   * arbitrary commands; "full": everything, including shell commands.
+   */
+  agent_cli_permission: "read_only" | "edit" | "full";
   api_key: string;
   /** Model used for chat + tool calling (must support `tools`). */
   chat_model: string;
@@ -45,6 +51,7 @@ export const DEFAULT_SETTINGS: Settings = {
   agent_cli: "claude",
   agent_cli_path: "",
   agent_cli_model: "",
+  agent_cli_permission: "read_only",
   api_key: "",
   chat_model: "",
   observe_model: "",

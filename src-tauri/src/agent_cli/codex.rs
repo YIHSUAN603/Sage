@@ -1,5 +1,5 @@
-// Codex adapter: `codex exec` with `--json` (JSONL events) and `--sandbox
-// read-only` as the read-only posture. The whole conversation is fed on stdin
+// Codex adapter: `codex exec` with `--json` (JSONL events); the tool posture is
+// the `--sandbox` level picked by `req.permission`. The whole conversation is fed on stdin
 // (prompt sentinel `-`). Images are NOT sent: `codex exec -i` takes a file path
 // (not inline data) and `--json` is known to hang with images, so observation
 // through codex is title-only (the frontend already drops the screenshot).
@@ -15,11 +15,16 @@ impl Adapter for Codex {
     }
 
     fn build(&self, req: &AgentRequest) -> Spawn {
+        let sandbox = match req.permission.as_str() {
+            "full" => "danger-full-access",
+            "edit" => "workspace-write",
+            _ => "read-only",
+        };
         let mut args: Vec<String> = vec![
             "exec".into(),
             "--json".into(),
             "--sandbox".into(),
-            "read-only".into(),
+            sandbox.into(),
             "--skip-git-repo-check".into(),
         ];
         if !req.model.is_empty() {
@@ -184,15 +189,19 @@ mod tests {
         assert!(parse_line(r#"{"type":"thread.started","thread_id":"x"}"#).is_empty());
     }
 
-    #[test]
-    fn build_passes_model_and_reads_prompt_from_stdin() {
-        let req = AgentRequest {
+    fn req(purpose: &str, model: &str, permission: &str) -> AgentRequest {
+        AgentRequest {
             cli: "codex".into(),
             messages: vec![],
-            purpose: "chat".into(),
-            model: "gpt-5-codex".into(),
-        };
-        let spawn = Codex.build(&req);
+            purpose: purpose.into(),
+            model: model.into(),
+            permission: permission.into(),
+        }
+    }
+
+    #[test]
+    fn build_passes_model_and_reads_prompt_from_stdin() {
+        let spawn = Codex.build(&req("chat", "gpt-5-codex", "read_only"));
         assert!(spawn
             .args
             .windows(2)
@@ -200,6 +209,24 @@ mod tests {
         assert!(spawn.args.iter().any(|a| a == "read-only"));
         assert_eq!(spawn.args.last().unwrap(), "-"); // prompt via stdin
         assert!(spawn.stdin.is_some());
+    }
+
+    #[test]
+    fn build_maps_permission_tiers_to_sandbox_levels() {
+        for (permission, sandbox) in [
+            ("read_only", "read-only"),
+            ("edit", "workspace-write"),
+            ("full", "danger-full-access"),
+        ] {
+            let spawn = Codex.build(&req("chat", "", permission));
+            assert!(
+                spawn
+                    .args
+                    .windows(2)
+                    .any(|w| w[0] == "--sandbox" && w[1] == sandbox),
+                "{permission} should map to {sandbox}"
+            );
+        }
     }
 
     #[test]

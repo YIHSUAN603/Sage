@@ -7,6 +7,12 @@ import { LANGUAGE_LABELS, LANGUAGES } from "../i18n/index.ts";
 import type { PetMeta, Settings } from "../ipc/contract.ts";
 import { requireIpc } from "../store/ipc.ts";
 import { useSettingsStore } from "../store/settings.ts";
+import {
+  AGENT_PERMISSIONS,
+  normalizePermission,
+  PERMISSION_HINT_KEY,
+  PERMISSION_LABEL_KEY,
+} from "./agentPermission.ts";
 
 /**
  * 模型清單載入介面（llm/models.ts 的 fetchFreeToolModels /
@@ -313,7 +319,6 @@ export function SettingsDialog({
                   {cliCheck.text}
                 </span>
               )}
-              <span className="field-hint">{t("settings.agentCliReadOnly")}</span>
               {draft.agent_cli === "codex" && (
                 <span className="field-hint">{t("settings.agentCliCodexObserve")}</span>
               )}
@@ -350,6 +355,34 @@ export function SettingsDialog({
                   onChange={(e) => patch({ agent_cli_model: e.currentTarget.value })}
                 />
               )}
+            </label>
+
+            <label className="field">
+              <span>{t("settings.agentCliPermission")}</span>
+              <select
+                value={normalizePermission(draft.agent_cli_permission)}
+                onChange={(e) =>
+                  patch({
+                    agent_cli_permission: e.currentTarget
+                      .value as Settings["agent_cli_permission"],
+                  })
+                }
+              >
+                {AGENT_PERMISSIONS.map((p) => (
+                  <option key={p} value={p}>
+                    {t(PERMISSION_LABEL_KEY[p])}
+                  </option>
+                ))}
+              </select>
+              <span
+                className={`field-hint${
+                  normalizePermission(draft.agent_cli_permission) === "full"
+                    ? " field-hint-error"
+                    : ""
+                }`}
+              >
+                {t(PERMISSION_HINT_KEY[normalizePermission(draft.agent_cli_permission)])}
+              </span>
             </label>
           </>
         )}

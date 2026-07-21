@@ -26,6 +26,7 @@ export default {
       settingsTitle: "Settings",
       hide: "Hide",
       dismissError: "Dismiss error",
+      permissionToggle: "Tool permission: {{level}} (click to switch)",
     },
     avatar: {
       observing: "Observing — click to pause (re-enable in settings)",
@@ -53,7 +54,16 @@ export default {
       agentCliChecking: "Checking…",
       agentCliDetected: "Detected: {{version}}",
       agentCliMissing: "Not found — install it or set the path above.",
-      agentCliReadOnly: "Read-only: it can read files but not run commands or edit.",
+      agentCliPermission: "Tool permission",
+      agentCliPermReadOnly: "Read-only",
+      agentCliPermEdit: "Can edit",
+      agentCliPermFull: "Full access",
+      agentCliPermReadOnlyHint:
+        "Read-only: it can read files and search, but not run commands or edit.",
+      agentCliPermEditHint:
+        "Can edit: it can create and modify files and use skills, but still can't run arbitrary commands.",
+      agentCliPermFullHint:
+        "Full access: it can run arbitrary commands and modify any file — use at your own risk.",
       agentCliCodexObserve: "Codex observes by window title only (no screenshot).",
       chatModel: "Chat model (required, must support tools)",
       chatModelPlaceholder: "Click to pick from the list, or type a model id",

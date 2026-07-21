@@ -26,6 +26,7 @@ export default {
       settingsTitle: "設定",
       hide: "しまう",
       dismissError: "エラーを閉じる",
+      permissionToggle: "ツール権限：{{level}}（クリックで切替）",
     },
     avatar: {
       observing: "観察中——クリックで一時停止（再開は設定から）",
@@ -53,7 +54,16 @@ export default {
       agentCliChecking: "確認中…",
       agentCliDetected: "検出：{{version}}",
       agentCliMissing: "見つかりません — インストールするか、上にパスを指定してください。",
-      agentCliReadOnly: "読み取り専用：ファイルの読み取りは可能ですが、コマンド実行や編集はできません。",
+      agentCliPermission: "ツール権限",
+      agentCliPermReadOnly: "読み取り専用",
+      agentCliPermEdit: "編集可",
+      agentCliPermFull: "フルアクセス",
+      agentCliPermReadOnlyHint:
+        "読み取り専用：ファイルの読み取りと検索は可能ですが、コマンド実行や編集はできません。",
+      agentCliPermEditHint:
+        "編集可：ファイルの作成・編集とスキルの使用が可能ですが、任意のコマンドは実行できません。",
+      agentCliPermFullHint:
+        "フルアクセス：任意のコマンド実行とあらゆるファイルの編集が可能です。自己責任でご利用ください。",
       agentCliCodexObserve: "Codex はウィンドウタイトルのみで観察します（スクリーンショットなし）。",
       chatModel: "チャットモデル（必須、tools 対応が必要）",
       chatModelPlaceholder: "クリックしてリストから選ぶか、model id を直接入力",

@@ -56,6 +56,19 @@ pub struct AgentRequest {
     /// Model override for the CLI; empty ⇒ the CLI's own default.
     #[serde(default)]
     pub model: String,
+    /// Tool permission tier: "read_only" | "edit" | "full". Never deserialized —
+    /// the webview can't grant itself tools; `agent_stream` injects it from
+    /// settings, and only for chat (observe is pinned to read_only).
+    #[serde(skip)]
+    pub permission: String,
+}
+
+/// Clamp a stored permission string to a known tier (anything else ⇒ read_only).
+fn sanitize_permission(raw: &str) -> String {
+    match raw {
+        "edit" | "full" => raw.to_string(),
+        _ => "read_only".to_string(),
+    }
 }
 
 /// What an adapter wants launched: extra argv (after the binary) and an optional
@@ -85,6 +98,12 @@ pub async fn agent_stream(
     req: AgentRequest,
 ) -> Result<(), String> {
     let settings = settings::load(&app);
+    let mut req = req;
+    req.permission = if req.purpose == "chat" {
+        sanitize_permission(&settings.agent_cli_permission)
+    } else {
+        "read_only".to_string()
+    };
     let adapter: Box<dyn Adapter + Send + Sync> = match req.cli.as_str() {
         "claude" => Box::new(claude::Claude),
         "codex" => Box::new(codex::Codex),

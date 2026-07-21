@@ -1,7 +1,8 @@
-// Claude Code adapter: `claude -p` with stream-json in/out. Read-only posture is
-// the allowlist (in print mode any non-allowlisted tool needing approval is
-// auto-denied). The conversation goes in as one stream-json user message (text +
-// inline image blocks); system messages become --append-system-prompt.
+// Claude Code adapter: `claude -p` with stream-json in/out. The tool posture is
+// the allowlist plus permission mode, picked by `req.permission` (in print mode
+// any non-allowlisted tool needing approval is auto-denied). The conversation
+// goes in as one stream-json user message (text + inline image blocks); system
+// messages become --append-system-prompt.
 use serde_json::Value;
 
 use super::{
@@ -11,6 +12,9 @@ use super::{
 
 /// Read-only tools the chat turn may use. Observe passes no tools at all.
 const READ_ONLY_TOOLS: &[&str] = &["Read", "Grep", "Glob", "WebFetch", "WebSearch"];
+
+/// Extra tools granted at the "edit" tier: file edits and skills, still no Bash.
+const EDIT_TOOLS: &[&str] = &["Write", "Edit", "NotebookEdit", "TodoWrite", "Skill"];
 
 pub struct Claude;
 
@@ -41,13 +45,30 @@ impl Adapter for Claude {
             args.push(system);
         }
 
-        // Read-only allowlist is the sandbox. Keep --allowedTools last: it is
-        // variadic and would otherwise swallow following flags.
-        args.push("--allowedTools".into());
+        // The allowlist is the sandbox. Keep --allowedTools last: it is variadic
+        // and would otherwise swallow following flags. "full" omits it entirely
+        // (bypassPermissions approves everything anyway).
         if req.purpose == "observe" {
+            args.push("--allowedTools".into());
             args.push(String::new()); // no tools — just look and answer
         } else {
-            args.extend(READ_ONLY_TOOLS.iter().map(|t| t.to_string()));
+            match req.permission.as_str() {
+                "full" => {
+                    args.push("--permission-mode".into());
+                    args.push("bypassPermissions".into());
+                }
+                "edit" => {
+                    args.push("--permission-mode".into());
+                    args.push("acceptEdits".into());
+                    args.push("--allowedTools".into());
+                    args.extend(READ_ONLY_TOOLS.iter().map(|t| t.to_string()));
+                    args.extend(EDIT_TOOLS.iter().map(|t| t.to_string()));
+                }
+                _ => {
+                    args.push("--allowedTools".into());
+                    args.extend(READ_ONLY_TOOLS.iter().map(|t| t.to_string()));
+                }
+            }
         }
 
         // One stream-json user message: flattened transcript + any inline images.
@@ -232,15 +253,19 @@ mod tests {
         }
     }
 
-    #[test]
-    fn build_passes_model_and_read_only_allowlist() {
-        let req = AgentRequest {
+    fn req(purpose: &str, model: &str, permission: &str) -> AgentRequest {
+        AgentRequest {
             cli: "claude".into(),
             messages: vec![],
-            purpose: "chat".into(),
-            model: "opus".into(),
-        };
-        let spawn = Claude.build(&req);
+            purpose: purpose.into(),
+            model: model.into(),
+            permission: permission.into(),
+        }
+    }
+
+    #[test]
+    fn build_passes_model_and_read_only_allowlist() {
+        let spawn = Claude.build(&req("chat", "opus", "read_only"));
         assert!(spawn
             .args
             .windows(2)
@@ -248,17 +273,46 @@ mod tests {
         assert!(spawn.args.iter().any(|a| a == "--allowedTools"));
         assert!(spawn.args.iter().any(|a| a == "Read"));
         assert!(!spawn.args.iter().any(|a| a == "Write" || a == "Bash"));
+        assert!(!spawn.args.iter().any(|a| a == "--permission-mode"));
+    }
+
+    #[test]
+    fn build_edit_tier_accepts_edits_but_not_bash() {
+        let spawn = Claude.build(&req("chat", "", "edit"));
+        assert!(spawn
+            .args
+            .windows(2)
+            .any(|w| w[0] == "--permission-mode" && w[1] == "acceptEdits"));
+        assert!(spawn.args.iter().any(|a| a == "Write"));
+        assert!(spawn.args.iter().any(|a| a == "Skill"));
+        assert!(!spawn.args.iter().any(|a| a == "Bash"));
+    }
+
+    #[test]
+    fn build_full_tier_bypasses_permissions_without_allowlist() {
+        let spawn = Claude.build(&req("chat", "", "full"));
+        assert!(spawn
+            .args
+            .windows(2)
+            .any(|w| w[0] == "--permission-mode" && w[1] == "bypassPermissions"));
+        assert!(!spawn.args.iter().any(|a| a == "--allowedTools"));
+    }
+
+    #[test]
+    fn build_observe_stays_tool_free_even_at_full() {
+        let spawn = Claude.build(&req("observe", "", "full"));
+        let idx = spawn.args.iter().position(|a| a == "--allowedTools").unwrap();
+        assert_eq!(spawn.args[idx + 1], "");
+        assert!(!spawn.args.iter().any(|a| a == "--permission-mode"));
     }
 
     #[test]
     fn build_omits_model_when_empty() {
-        let req = AgentRequest {
-            cli: "claude".into(),
-            messages: vec![],
-            purpose: "chat".into(),
-            model: String::new(),
-        };
-        assert!(!Claude.build(&req).args.iter().any(|a| a == "--model"));
+        assert!(!Claude
+            .build(&req("chat", "", "read_only"))
+            .args
+            .iter()
+            .any(|a| a == "--model"));
     }
 
     #[test]
