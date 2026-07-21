@@ -145,8 +145,8 @@ export function AvatarWindow() {
           <svg
             className="sprite-svg"
             viewBox="0 0 96 96"
-            width="96"
-            height="96"
+            width="170"
+            height="170"
             aria-hidden
           >
             <defs>

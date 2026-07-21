@@ -10,7 +10,7 @@ import { ATLAS, ROWS, rowForMood } from "./petAtlas.ts";
 interface PetSpriteProps {
   atlasUrl: string;
   mood: AvatarMood;
-  /** Cell scale factor. Default 0.5 → a 96×104 footprint, like the SVG sprite. */
+  /** Cell scale factor. Default 0.88 → a ~169×183 footprint, like the SVG sprite. */
   scale?: number;
 }
 
@@ -27,7 +27,7 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-export function PetSprite({ atlasUrl, mood, scale = 0.5 }: PetSpriteProps) {
+export function PetSprite({ atlasUrl, mood, scale = 0.88 }: PetSpriteProps) {
   const reduced = usePrefersReducedMotion();
   const [frame, setFrame] = useState(0);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
