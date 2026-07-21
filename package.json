@@ -4,7 +4,7 @@
   "version": "0.1.1",
   "type": "module",
   "scripts": {
-    "clean:appledouble": "find src-tauri src -name '._*' -delete",
+    "clean:appledouble": "node scripts/clean-appledouble.mjs",
     "predev": "npm run clean:appledouble",
     "dev": "vite",
     "prebuild": "npm run clean:appledouble",
