@@ -2,7 +2,7 @@
 // webview, so its timers are never throttled). Wires sampler → observation
 // store + cross-window context broadcast + bubble gate, honoring the settings
 // switch: observe_enabled off ⇒ everything stops, nothing is captured.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BUBBLE_EVENT,
   CONTEXT_EVENT,
@@ -60,7 +60,37 @@ interface DevHelpers {
 export function useObservation(): ObservationHandle {
   const enabled = useSettingsStore((s) => s.settings.observe_enabled);
   const intervalSec = useSettingsStore((s) => s.settings.observe_interval);
+  const activePet = useSettingsStore((s) => s.settings.active_pet);
   const devRef = useRef<DevHelpers | null>(null);
+
+  // The active companion may override the gate's cadence via pet.json's
+  // `sage.proactive`. Loaded here (async) so the main effect can re-create the
+  // gate with the new numbers when the pet changes. DEV_TUNING still wins.
+  const [petGate, setPetGate] = useState<{ cooldownMs?: number; maxPerHour?: number }>({});
+  useEffect(() => {
+    let cancelled = false;
+    const id = activePet.trim();
+    if (!id) {
+      setPetGate({});
+      return;
+    }
+    void (async () => {
+      try {
+        const pet = await requireIpc().readPet(id);
+        if (cancelled) return;
+        const p = pet.proactive ?? {};
+        const next: { cooldownMs?: number; maxPerHour?: number } = {};
+        if (typeof p.cooldownMinutes === "number") next.cooldownMs = p.cooldownMinutes * 60_000;
+        if (typeof p.maxPerHour === "number") next.maxPerHour = p.maxPerHour;
+        setPetGate(next);
+      } catch {
+        if (!cancelled) setPetGate({});
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activePet]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -84,6 +114,7 @@ export function useObservation(): ObservationHandle {
     // dev test bubble surfaces it so failures explain themselves.
     let askTrail: string[] = [];
     const gate = createBubbleGate({
+      ...petGate,
       ...DEV_TUNING,
       ipc,
       getModel() {
@@ -142,7 +173,7 @@ export function useObservation(): ObservationHandle {
       sampler.stop();
       gate.reset();
     };
-  }, [enabled, intervalSec]);
+  }, [enabled, intervalSec, petGate]);
 
   const devAvailable = import.meta.env.DEV && enabled;
   return {

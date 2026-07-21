@@ -7,10 +7,13 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 
 import { useTranslation } from "react-i18next";
 import { useObservation } from "../observe/runner.ts";
 import { hasTauri } from "../runtime.ts";
+import { requireIpc } from "../store/ipc.ts";
+import { useCompanionName } from "../store/companion.ts";
 import { avatarMood, MOOD_EVENT, type AvatarMood, useChatStore } from "../store/chat.ts";
 import { useSettingsStore } from "../store/settings.ts";
 import { useSettingsSync } from "../store/settingsSync.ts";
 import { toggleChatWindow } from "./chatToggle.ts";
+import { PetSprite } from "./PetSprite.tsx";
 import "./avatar.css";
 
 /** Movement beyond this many px turns a press into a window drag. */
@@ -18,10 +21,36 @@ const DRAG_THRESHOLD = 4;
 
 export function AvatarWindow() {
   const { t } = useTranslation();
+  const name = useCompanionName();
   const localMood = useChatStore(avatarMood);
   const [eventMood, setEventMood] = useState<AvatarMood | null>(null);
   const mood = eventMood ?? localMood;
   const press = useRef<{ x: number; y: number } | null>(null);
+
+  // Selected companion: when one is set, render its spritesheet; on any load
+  // failure (or none selected) fall back to the built-in SVG. Atlas is fetched
+  // once per active_pet change and cached in state as a data URL.
+  const activePet = useSettingsStore((s) => s.settings.active_pet);
+  const [atlasUrl, setAtlasUrl] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const id = activePet.trim();
+    if (!id) {
+      setAtlasUrl(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const url = await requireIpc().readPetAtlas(id);
+        if (!cancelled) setAtlasUrl(url);
+      } catch {
+        if (!cancelled) setAtlasUrl(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activePet]);
 
   // S5.1–S5.3 run here — the avatar webview is the only one always visible,
   // so its timers never get throttled. Badge shows while observing.
@@ -101,7 +130,7 @@ export function AvatarWindow() {
         className={`sage-sprite mood-${mood}`}
         role="button"
         aria-label={t("avatar.toggleChat")}
-        title={t("avatar.sprite")}
+        title={t("avatar.sprite", { name })}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
@@ -110,6 +139,9 @@ export function AvatarWindow() {
         }}
       >
         <div className="sprite-bob">
+          {atlasUrl ? (
+            <PetSprite atlasUrl={atlasUrl} mood={mood} />
+          ) : (
           <svg
             className="sprite-svg"
             viewBox="0 0 96 96"
@@ -199,6 +231,7 @@ export function AvatarWindow() {
               fill="#2F3A2E"
             />
           </svg>
+          )}
           <div className="think-dots" aria-hidden>
             <span />
             <span />

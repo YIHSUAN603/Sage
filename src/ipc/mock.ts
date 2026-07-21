@@ -4,6 +4,7 @@
 import type {
   ActiveWindow,
   ChatRequest,
+  Pet,
   SageIpc,
   Settings,
   SkillMeta,
@@ -18,6 +19,10 @@ export interface MockIpcOptions {
   files?: Record<string, string>;
   /** Installed skills for listSkills/readSkill. Defaults to none. */
   skills?: MockSkill[];
+  /** Installed pets for listPets/readPet. Defaults to none. */
+  pets?: Pet[];
+  /** Data URL returned by readPetAtlas (any pet id). */
+  petAtlas?: string;
   /** Initial settings (merged over DEFAULT_SETTINGS). */
   settings?: Partial<Settings>;
   /** activeWindow results, cycled per call. Defaults to [null]. */
@@ -65,10 +70,16 @@ export const DEFAULT_SCRIPT: StreamEvent[][] = [
 const TINY_JPEG_DATA_URL =
   "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
 
+// 1×1 transparent PNG — stand-in for a pet spritesheet in tests.
+const TINY_PNG_DATA_URL =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M8AAAMCAoGF/+wAAAAASUVORK5CYII=";
+
 export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
   const script = options.script ?? DEFAULT_SCRIPT;
   const files = { ...(options.files ?? {}) };
   const skills = [...(options.skills ?? [])];
+  const pets = [...(options.pets ?? [])];
+  const petAtlas = options.petAtlas ?? TINY_PNG_DATA_URL;
   const windows = options.windows ?? [null];
   const screenshot = options.screenshot ?? TINY_JPEG_DATA_URL;
   let settings: Settings = { ...DEFAULT_SETTINGS, ...(options.settings ?? {}) };
@@ -116,6 +127,29 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       // Same message shape as skills.rs
       if (!skill) throw new Error(`skill not found: ${name}`);
       return skill.body;
+    },
+
+    async listPets() {
+      calls.push({ command: "list_pets" });
+      return pets.map(({ id, displayName, description }) => ({
+        id,
+        displayName,
+        description,
+      }));
+    },
+
+    async readPet(id) {
+      calls.push({ command: "read_pet", args: id });
+      const pet = pets.find((p) => p.id === id);
+      // Same message shape as pets.rs
+      if (!pet) throw new Error(`pet not found: ${id}`);
+      return { ...pet };
+    },
+
+    async readPetAtlas(id) {
+      calls.push({ command: "read_pet_atlas", args: id });
+      if (!pets.some((p) => p.id === id)) throw new Error(`pet not found: ${id}`);
+      return petAtlas;
     },
 
     async getSettings() {

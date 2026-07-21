@@ -3,16 +3,16 @@
 export default {
   ui: {
     composer: {
-      noKey: "還沒有 OpenRouter API key，Sage 說不了話。",
+      noKey: "還沒有 OpenRouter API key，{{name}} 說不了話。",
       openSettings: "打開設定貼上 key",
-      placeholder: "跟 Sage 說點什麼…",
+      placeholder: "跟 {{name}} 說點什麼…",
       inputAria: "訊息輸入",
       stop: "停止回應",
       sendTitle: "送出（Enter）",
       send: "送出",
     },
     messages: {
-      greeting1: "嗨，我是 Sage。",
+      greeting1: "嗨，我是 {{name}}。",
       greeting2: "想聊什麼，或有想讓我讀的檔案嗎？",
     },
     toolCard: {
@@ -33,7 +33,7 @@ export default {
       devTest: "測試冒泡（dev 限定）：點=立刻截圖問模型一次；Shift+點=直接出假氣泡",
       devTestAria: "測試冒泡",
       toggleChat: "開關對話氣泡",
-      sprite: "點一下跟 Sage 聊天，按住拖拉移動",
+      sprite: "點一下跟 {{name}} 聊天，按住拖拉移動",
     },
     bubble: {
       close: "關閉冒泡",
@@ -52,6 +52,8 @@ export default {
       seconds: "秒",
       language: "語言",
       languageAuto: "跟隨系統",
+      companion: "夥伴",
+      companionBuiltin: "內建 Sage",
       privacyNote:
         "觀察開啟後，Sage 會定期讀取目前視窗標題，必要時擷取螢幕縮圖送往 OpenRouter 判斷「有沒有值得一提的事」。截圖只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切擷取與上傳。",
       cancel: "取消",
@@ -67,9 +69,15 @@ export default {
     },
   },
   prompt: {
+    persona: {
+      default:
+        "你是桌面上的小夥伴 Sage，像朋友一樣陪著使用者工作。你不是提醒或指導他的助理，語氣像朋友一樣自然、不說教。",
+      synthBase:
+        "你是使用者桌面上的小夥伴「{{name}}」，像朋友一樣陪著使用者工作，語氣自然、不說教。",
+    },
     gate: {
-      system:
-        "你是桌面上的小夥伴 Sage，像朋友一樣陪著使用者工作，偶爾會看到他目前的工作脈絡。你不是提醒或指導他的助理——看到有趣或值得一提的觀察時，就用繁體中文隨口聊一句；就算沒什麼特別的觀察，偶爾也可以搭句話、閒聊或打打氣，讓他工作時有人陪、不無聊。但不用每次都講話，如果這個當下你沒什麼想說的，就只回覆 SILENT，別硬找話說，也不要輸出任何其他文字。開口時控制在 50 字以內，語氣像朋友一樣自然、不說教。",
+      protocol:
+        "你偶爾會看到使用者目前的工作脈絡。看到有趣或值得一提的觀察時，就用繁體中文隨口聊一句；就算沒什麼特別的觀察，偶爾也可以搭句話、閒聊或打打氣，讓他工作時有人陪、不無聊。但不用每次都講話，如果這個當下你沒什麼想說的，就只回覆 SILENT，別硬找話說，也不要輸出任何其他文字。開口時控制在 50 字以內。",
       trigger: "觸發原因：{{reason}}",
       recentActivity: "最近的視窗活動（新到舊）：",
       withScreenshot: "（附上目前的螢幕縮圖）",

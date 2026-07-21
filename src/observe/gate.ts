@@ -5,6 +5,7 @@
 // a short remark or the literal word SILENT. Clock injectable for tests.
 import i18n from "../i18n/index.ts";
 import type { ChatMessage, ContentPart, SageIpc } from "../ipc/contract.ts";
+import { gateSystem } from "../store/persona.ts";
 import { createDeltaAccumulator } from "../llm/openrouter.ts";
 import {
   assessNotable,
@@ -113,7 +114,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
         ]
       : text;
     const messages: ChatMessage[] = [
-      { role: "system", content: i18n.t("gate.system", { ns: "prompt" }) },
+      { role: "system", content: await gateSystem() },
       { role: "user", content },
     ];
 

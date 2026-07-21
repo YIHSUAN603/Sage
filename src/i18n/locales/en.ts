@@ -3,16 +3,16 @@ import type zhTW from "./zh-TW.ts";
 export default {
   ui: {
     composer: {
-      noKey: "No OpenRouter API key yet — Sage can't talk.",
+      noKey: "No OpenRouter API key yet — {{name}} can't talk.",
       openSettings: "Open settings to paste a key",
-      placeholder: "Say something to Sage…",
+      placeholder: "Say something to {{name}}…",
       inputAria: "Message input",
       stop: "Stop responding",
       sendTitle: "Send (Enter)",
       send: "Send",
     },
     messages: {
-      greeting1: "Hi, I'm Sage.",
+      greeting1: "Hi, I'm {{name}}.",
       greeting2: "What's on your mind? Or is there a file you'd like me to read?",
     },
     toolCard: {
@@ -34,7 +34,7 @@ export default {
         "Test bubble (dev only): click = screenshot + ask the model once; Shift+click = show a fake bubble",
       devTestAria: "Test bubble",
       toggleChat: "Toggle chat bubble",
-      sprite: "Click to chat with Sage, hold and drag to move",
+      sprite: "Click to chat with {{name}}, hold and drag to move",
     },
     bubble: {
       close: "Close bubble",
@@ -53,6 +53,8 @@ export default {
       seconds: "s",
       language: "Language",
       languageAuto: "Follow system",
+      companion: "Companion",
+      companionBuiltin: "Built-in Sage",
       privacyNote:
         "When observation is on, Sage periodically reads the current window title and, when needed, sends a screen thumbnail to OpenRouter to decide whether anything is worth mentioning. Screenshots are processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all capture and upload entirely.",
       cancel: "Cancel",
@@ -68,9 +70,15 @@ export default {
     },
   },
   prompt: {
+    persona: {
+      default:
+        "You are Sage, a little companion on the user's desktop who keeps them company while they work, like a friend. You are not an assistant that reminds or instructs them — keep your tone natural and friendly, never preachy.",
+      synthBase:
+        "You are \"{{name}}\", a little companion on the user's desktop who keeps them company while they work, like a friend. Keep your tone natural and friendly, never preachy.",
+    },
     gate: {
-      system:
-        "You are Sage, a little companion on the user's desktop who keeps them company while they work, like a friend; you occasionally get a glimpse of their current context. You are not an assistant that reminds or instructs them — when you notice something fun or worth mentioning, drop a casual line in English; even with nothing in particular to note, feel free now and then to chat, joke, or cheer them on, so work feels less lonely. You don't have to speak every time: if you have nothing you feel like saying right now, reply with only SILENT — don't force it, and output no other text. When you do speak, keep it to one sentence, at most 30 words, natural and friendly like a friend, never preachy.",
+      protocol:
+        "You occasionally get a glimpse of the user's current context. When you notice something fun or worth mentioning, drop a casual line in English; even with nothing in particular to note, feel free now and then to chat, joke, or cheer them on, so work feels less lonely. You don't have to speak every time: if you have nothing you feel like saying right now, reply with only SILENT — don't force it, and output no other text. When you do speak, keep it to one sentence, at most 30 words.",
       trigger: "Trigger: {{reason}}",
       recentActivity: "Recent window activity (newest first):",
       withScreenshot: "(A thumbnail of the current screen is attached.)",

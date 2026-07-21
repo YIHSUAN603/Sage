@@ -1,6 +1,7 @@
 mod capture;
 mod context;
 mod llm;
+mod pets;
 mod settings;
 mod skills;
 mod tools;
@@ -15,6 +16,9 @@ pub fn run() {
             tools::tool_read_file,
             skills::list_skills,
             skills::read_skill,
+            pets::list_pets,
+            pets::read_pet,
+            pets::read_pet_atlas,
             llm::chat_stream,
             capture::capture_screen,
             context::active_window

@@ -2,6 +2,7 @@
 // send button becomes a stop button. Without an API key it shows guidance.
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useCompanionName } from "../store/companion.ts";
 
 interface Props {
   streaming: boolean;
@@ -19,12 +20,13 @@ export function Composer({
   onOpenSettings,
 }: Props) {
   const { t } = useTranslation();
+  const name = useCompanionName();
   const [draft, setDraft] = useState("");
 
   if (!hasKey) {
     return (
       <div className="composer composer-guide">
-        <p>{t("composer.noKey")}</p>
+        <p>{t("composer.noKey", { name })}</p>
         <button type="button" onClick={onOpenSettings}>
           {t("composer.openSettings")}
         </button>
@@ -50,7 +52,7 @@ export function Composer({
       <textarea
         value={draft}
         rows={1}
-        placeholder={t("composer.placeholder")}
+        placeholder={t("composer.placeholder", { name })}
         aria-label={t("composer.inputAria")}
         onChange={(e) => setDraft(e.currentTarget.value)}
         onKeyDown={(e) => {

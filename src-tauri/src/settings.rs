@@ -28,6 +28,9 @@ pub struct Settings {
     /// the frontend supports (zh-TW / en / zh-CN / ja).
     #[serde(default = "default_language")]
     pub language: String,
+    /// Selected companion id (folder under <config>/pets/). Empty = built-in Sage.
+    #[serde(default)]
+    pub active_pet: String,
 }
 
 fn default_interval() -> u32 {
@@ -48,6 +51,7 @@ impl Default for Settings {
             observe_interval: default_interval(),
             referer: "https://github.com/sage".into(),
             language: default_language(),
+            active_pet: String::new(),
         }
     }
 }

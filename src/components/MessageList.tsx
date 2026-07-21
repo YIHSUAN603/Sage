@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../ipc/contract.ts";
+import { useCompanionName } from "../store/companion.ts";
 import { ToolCallCard } from "./ToolCallCard.tsx";
 
 interface Props {
@@ -13,6 +14,7 @@ interface Props {
 
 export function MessageList({ messages, partial, streaming }: Props) {
   const { t } = useTranslation();
+  const name = useCompanionName();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -31,7 +33,7 @@ export function MessageList({ messages, partial, streaming }: Props) {
     <div className="messages">
       {messages.length === 0 && !streaming && (
         <div className="messages-empty">
-          <p>{t("messages.greeting1")}</p>
+          <p>{t("messages.greeting1", { name })}</p>
           <p>{t("messages.greeting2")}</p>
         </div>
       )}

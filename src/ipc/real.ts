@@ -5,6 +5,8 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   COMMANDS,
   type ActiveWindow,
+  type Pet,
+  type PetMeta,
   type SageIpc,
   type Settings,
   type SkillMeta,
@@ -30,6 +32,18 @@ export const realIpc: SageIpc = {
 
   readSkill(name: string): Promise<string> {
     return invoke(COMMANDS.readSkill, { name });
+  },
+
+  listPets(): Promise<PetMeta[]> {
+    return invoke(COMMANDS.listPets);
+  },
+
+  readPet(id: string): Promise<Pet> {
+    return invoke(COMMANDS.readPet, { id });
+  },
+
+  readPetAtlas(id: string): Promise<string> {
+    return invoke(COMMANDS.readPetAtlas, { id });
   },
 
   getSettings(): Promise<Settings> {

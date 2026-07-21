@@ -8,6 +8,7 @@ import { buildContextMessage } from "../observe/context.ts";
 import { createReadFileTool } from "../tools/readFile.ts";
 import { createToolRegistry } from "../tools/registry.ts";
 import { createSkillTool } from "../tools/useSkill.ts";
+import { chatPersonaSystem } from "./persona.ts";
 import { requireIpc } from "./ipc.ts";
 import { useObservationStore } from "./observation.ts";
 import { useSettingsStore } from "./settings.ts";
@@ -59,10 +60,15 @@ export const useChatStore = create<ChatState>()((set, get) => ({
 
     // S5.4 — 觀察開啟時，把最近的視窗脈絡以 system message 注入「這次請求」，
     // 但不進 store.messages（對話歷史保持乾淨，UI 本來也不渲染 system）。
+    // 換夥伴後，同樣以 request-only system 注入夥伴人格（沒選夥伴時為 null，維持現況）。
+    const persona = await chatPersonaSystem();
     const observed = useSettingsStore.getState().settings.observe_enabled
       ? buildContextMessage(useObservationStore.getState().recent, Date.now())
       : null;
-    const requestMessages = observed ? [observed, ...messages] : messages;
+    const prefix: ChatMessage[] = [];
+    if (persona) prefix.push({ role: "system", content: persona });
+    if (observed) prefix.push(observed);
+    const requestMessages = prefix.length > 0 ? [...prefix, ...messages] : messages;
 
     // runAgentLoop 處理整個 function-calling 迴圈：串流→有 tool_calls 就查
     // registry 執行→回填 role:"tool"→續跑至收斂。onMessage 讓每則 assistant

@@ -23,6 +23,8 @@ export interface Settings {
   referer: string;
   /** UI + assistant language: "auto" (follow system) or zh-TW / en / zh-CN / ja. */
   language: string;
+  /** Selected companion id (folder under <config>/pets/). Empty = built-in Sage. */
+  active_pet: string;
 }
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
@@ -34,6 +36,7 @@ export const DEFAULT_SETTINGS: Settings = {
   observe_interval: 8,
   referer: "https://github.com/sage",
   language: "auto",
+  active_pet: "",
 };
 
 // ---------------------------------------------------------------------------
@@ -124,6 +127,35 @@ export interface SkillMeta {
 }
 
 // ---------------------------------------------------------------------------
+// Pets (companions) — mirrors src-tauri/src/pets.rs. A pet is a folder under
+// <app_config_dir>/pets/ following the Codex pet contract that OpenAI's
+// `hatch-pet` skill emits: a pet.json (id / displayName / description /
+// spritesheetPath) + a spritesheet image. `persona` / `proactive` come from
+// the optional additive `sage` block; a plain hatch-pet folder omits them and
+// Sage falls back to a synthesized persona + default proactive tuning.
+// ---------------------------------------------------------------------------
+
+export interface PetMeta {
+  id: string;
+  displayName: string;
+  description: string;
+}
+
+/** Numeric proactive-chatter overrides (from pet.json's `sage.proactive`). */
+export interface PetProactive {
+  cooldownMinutes?: number;
+  maxPerHour?: number;
+}
+
+/** A fully parsed pet manifest. */
+export interface Pet extends PetMeta {
+  spritesheetPath: string;
+  /** Custom system prompt; absent ⇒ Sage synthesizes one from name+description. */
+  persona?: string;
+  proactive?: PetProactive;
+}
+
+// ---------------------------------------------------------------------------
 // Observation context
 // ---------------------------------------------------------------------------
 
@@ -141,6 +173,9 @@ export const COMMANDS = {
   toolReadFile: "tool_read_file",
   listSkills: "list_skills",
   readSkill: "read_skill",
+  listPets: "list_pets",
+  readPet: "read_pet",
+  readPetAtlas: "read_pet_atlas",
   getSettings: "get_settings",
   setSettings: "set_settings",
   captureScreen: "capture_screen",
@@ -168,6 +203,12 @@ export interface SageIpc {
   listSkills(): Promise<SkillMeta[]>;
   /** One skill's SKILL.md body (frontmatter stripped). Rejects when the name is unknown. */
   readSkill(name: string): Promise<string>;
+  /** Installed pets' metadata (scans <config_dir>/pets/, creating it if needed). */
+  listPets(): Promise<PetMeta[]>;
+  /** One pet's fully parsed manifest. Rejects when the id is unknown. */
+  readPet(id: string): Promise<Pet>;
+  /** The pet's spritesheet as a data URL (data:image/webp;base64,...). Rejects on failure. */
+  readPetAtlas(id: string): Promise<string>;
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<void>;
   /** Capture the main screen as a JPEG data URL. Rejects when observe_enabled is false. */
