@@ -46,6 +46,13 @@ export const realIpc: SageIpc = {
     return invoke(COMMANDS.readPetAtlas, { id });
   },
 
+  async importPet(): Promise<PetMeta | null> {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const sourcePath = await open({ directory: true });
+    if (typeof sourcePath !== "string") return null; // cancelled
+    return invoke(COMMANDS.importPet, { sourcePath });
+  },
+
   getSettings(): Promise<Settings> {
     return invoke(COMMANDS.getSettings);
   },

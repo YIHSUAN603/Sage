@@ -48,6 +48,27 @@ test("mock listPets/readPet/readPetAtlas round-trip", async () => {
   assert.match(await ipc.readPetAtlas("pip"), /^data:image\/png;base64,/);
 });
 
+test("importPet returns metadata and makes the pet discoverable", async () => {
+  const ipc = createMockIpc({
+    importResult: { id: "dragon", displayName: "小龍", description: "一隻剛孵化的小龍" },
+  });
+  const imported = await ipc.importPet();
+  assert.deepEqual(imported, {
+    id: "dragon",
+    displayName: "小龍",
+    description: "一隻剛孵化的小龍",
+  });
+  // Now discoverable by the picker + atlas load, like a real import.
+  assert.deepEqual(await ipc.listPets(), [imported]);
+  assert.match(await ipc.readPetAtlas("dragon"), /^data:image\/png;base64,/);
+});
+
+test("importPet resolves null when the picker is cancelled", async () => {
+  const ipc = createMockIpc();
+  assert.equal(await ipc.importPet(), null);
+  assert.deepEqual(await ipc.listPets(), []);
+});
+
 test("no companion selected → chat injects nothing, persona is built-in Sage", async () => {
   bindIpc(createMockIpc({ pets: [CUSTOM, PLAIN] }));
   useActivePet("");

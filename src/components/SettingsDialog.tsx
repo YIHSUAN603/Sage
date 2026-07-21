@@ -105,6 +105,8 @@ export function SettingsDialog({
   const [observeModels, setObserveModels] = useState<ModelOption[]>([]);
   const [modelsError, setModelsError] = useState(false);
   const [pets, setPets] = useState<PetMeta[]>([]);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -133,6 +135,24 @@ export function SettingsDialog({
   if (!open) return null;
 
   const patch = (p: Partial<Settings>) => setDraft((d) => ({ ...d, ...p }));
+
+  // Pick a pet folder, copy it into <config>/pets/, then select it. The
+  // avatar swaps once the draft is saved (settings broadcast reloads it).
+  const importPet = async () => {
+    setImportError(false);
+    setImporting(true);
+    try {
+      const imported = await requireIpc().importPet();
+      if (!imported) return; // user cancelled the picker
+      const list = await requireIpc().listPets();
+      setPets(list);
+      patch({ active_pet: imported.id });
+    } catch {
+      setImportError(true);
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -181,6 +201,17 @@ export function SettingsDialog({
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="import-pet"
+            disabled={importing}
+            onClick={importPet}
+          >
+            {importing ? t("settings.importing") : t("settings.importPet")}
+          </button>
+          {importError && (
+            <span className="field-hint">{t("settings.importError")}</span>
+          )}
         </label>
 
         <label className="field">

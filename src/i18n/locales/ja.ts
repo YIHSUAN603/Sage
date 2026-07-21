@@ -55,6 +55,10 @@ export default {
       languageAuto: "システムに従う",
       companion: "相棒",
       companionBuiltin: "内蔵 Sage",
+      importPet: "ペットを取り込む…",
+      importing: "取り込み中…",
+      importError:
+        "取り込みに失敗しました——pet.json とスプライトシートを含むペットフォルダを選んでください。",
       privacyNote:
         "観察を有効にすると、Sage は定期的に現在のウィンドウタイトルを読み取り、必要に応じて画面のサムネイルを OpenRouter に送って「言及する価値があるか」を判断します。スクリーンショットはメモリ内でのみ処理され、送信後すぐ破棄されて保存されません。観察をオフにすれば、すべての取得と送信が完全に停止します。",
       cancel: "キャンセル",

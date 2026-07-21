@@ -5,6 +5,7 @@ import type {
   ActiveWindow,
   ChatRequest,
   Pet,
+  PetMeta,
   SageIpc,
   Settings,
   SkillMeta,
@@ -23,6 +24,8 @@ export interface MockIpcOptions {
   pets?: Pet[];
   /** Data URL returned by readPetAtlas (any pet id). */
   petAtlas?: string;
+  /** Pet returned by importPet; when absent, importPet resolves null (cancelled). */
+  importResult?: PetMeta;
   /** Initial settings (merged over DEFAULT_SETTINGS). */
   settings?: Partial<Settings>;
   /** activeWindow results, cycled per call. Defaults to [null]. */
@@ -150,6 +153,19 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       calls.push({ command: "read_pet_atlas", args: id });
       if (!pets.some((p) => p.id === id)) throw new Error(`pet not found: ${id}`);
       return petAtlas;
+    },
+
+    async importPet() {
+      calls.push({ command: "import_pet" });
+      if (!options.importResult) return null; // simulate a cancelled picker
+      const pet = options.importResult;
+      // Mirror the backend overwrite: replace any existing pet with this id,
+      // then make it discoverable via a subsequent listPets/readPet.
+      const idx = pets.findIndex((p) => p.id === pet.id);
+      const full: Pet = { spritesheetPath: "spritesheet.webp", ...pet };
+      if (idx >= 0) pets[idx] = full;
+      else pets.push(full);
+      return { id: pet.id, displayName: pet.displayName, description: pet.description };
     },
 
     async getSettings() {

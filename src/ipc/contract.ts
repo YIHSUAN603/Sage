@@ -176,6 +176,7 @@ export const COMMANDS = {
   listPets: "list_pets",
   readPet: "read_pet",
   readPetAtlas: "read_pet_atlas",
+  importPet: "import_pet",
   getSettings: "get_settings",
   setSettings: "set_settings",
   captureScreen: "capture_screen",
@@ -209,6 +210,13 @@ export interface SageIpc {
   readPet(id: string): Promise<Pet>;
   /** The pet's spritesheet as a data URL (data:image/webp;base64,...). Rejects on failure. */
   readPetAtlas(id: string): Promise<string>;
+  /**
+   * Prompt the user to pick a pet folder (a pet.json + spritesheet, as
+   * hatch-pet emits) and copy it into <config>/pets/. Resolves with the
+   * imported pet's metadata, or null if the user cancelled the picker.
+   * Rejects when the chosen folder isn't a valid pet.
+   */
+  importPet(): Promise<PetMeta | null>;
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<void>;
   /** Capture the main screen as a JPEG data URL. Rejects when observe_enabled is false. */

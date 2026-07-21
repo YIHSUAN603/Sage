@@ -55,6 +55,10 @@ export default {
       languageAuto: "Follow system",
       companion: "Companion",
       companionBuiltin: "Built-in Sage",
+      importPet: "Import pet…",
+      importing: "Importing…",
+      importError:
+        "Import failed — pick a pet folder containing a pet.json and its spritesheet.",
       privacyNote:
         "When observation is on, Sage periodically reads the current window title and, when needed, sends a screen thumbnail to OpenRouter to decide whether anything is worth mentioning. Screenshots are processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all capture and upload entirely.",
       cancel: "Cancel",

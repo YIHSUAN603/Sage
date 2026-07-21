@@ -443,6 +443,23 @@
   color: var(--ink-soft);
 }
 
+.import-pet {
+  align-self: flex-start;
+  border: 1.5px solid var(--bubble-border);
+  border-radius: 9px;
+  padding: 5px 11px;
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.import-pet:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

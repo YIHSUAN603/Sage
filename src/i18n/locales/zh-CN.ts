@@ -54,6 +54,9 @@ export default {
       languageAuto: "跟随系统",
       companion: "伙伴",
       companionBuiltin: "内建 Sage",
+      importPet: "导入宠物…",
+      importing: "导入中…",
+      importError: "导入失败——请选一个含 pet.json 与 spritesheet 的宠物文件夹。",
       privacyNote:
         "观察开启后，Sage 会定期读取当前窗口标题，必要时截取屏幕缩略图发送给 OpenRouter 判断“有没有值得一提的事”。截图只在内存中处理、发送后即丢弃，不会存盘；关闭观察即完全停止一切截取与上传。",
       cancel: "取消",
