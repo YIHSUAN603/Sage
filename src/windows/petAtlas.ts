@@ -51,11 +51,19 @@ export function rowForMood(mood: AvatarMood): number {
 // → jump, long idle → run a lap), then reverts to the mood row.
 export type AvatarGesture = "run-left" | "run-right" | "jump";
 
+// Generated sheets don't reliably draw the running-left row facing left (the
+// sage sheet's rows 1 and 2 are near-identical right-facing runs), so run-left
+// reuses the running-right row and PetSprite mirrors it horizontally.
 export const GESTURE_ROW: Record<AvatarGesture, number> = {
-  "run-left": 2, // running-left
+  "run-left": 1, // running-right, mirrored via gestureFlipsX
   "run-right": 1, // running-right
   jump: 4, // jumping
 };
+
+/** Whether the sprite cell should be mirrored horizontally for this gesture. */
+export function gestureFlipsX(gesture: AvatarGesture): boolean {
+  return gesture === "run-left";
+}
 
 /** Row index for a gesture, clamped like rowForMood. */
 export function rowForGesture(gesture: AvatarGesture): number {

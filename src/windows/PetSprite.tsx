@@ -5,7 +5,14 @@
 // prefers-reduced-motion by holding the first frame.
 import { useEffect, useRef, useState } from "react";
 import type { AvatarMood } from "../store/chat.ts";
-import { ATLAS, type AvatarGesture, ROWS, rowForGesture, rowForMood } from "./petAtlas.ts";
+import {
+  ATLAS,
+  type AvatarGesture,
+  gestureFlipsX,
+  ROWS,
+  rowForGesture,
+  rowForMood,
+} from "./petAtlas.ts";
 
 interface PetSpriteProps {
   atlasUrl: string;
@@ -37,6 +44,7 @@ export function PetSprite({ atlasUrl, mood, gesture, scale = 0.88 }: PetSpritePr
   // A gesture temporarily wins over the mood row; the frame loop below re-arms
   // on row change, so playing and reverting both animate for free.
   const row = gesture ? rowForGesture(gesture) : rowForMood(mood);
+  const flip = gesture ? gestureFlipsX(gesture) : false;
 
   // The cell size (192×208) is fixed across sprite versions, but the total
   // sheet height is not: v1 sheets are 9 rows (1872px), v2 sheets 11 rows
@@ -78,7 +86,12 @@ export function PetSprite({ atlasUrl, mood, gesture, scale = 0.88 }: PetSpritePr
   return (
     <div
       className="pet-sprite"
-      style={{ width: `${w}px`, height: `${h}px`, overflow: "hidden" }}
+      style={{
+        width: `${w}px`,
+        height: `${h}px`,
+        overflow: "hidden",
+        transform: flip ? "scaleX(-1)" : undefined,
+      }}
       aria-hidden
     >
       <div
