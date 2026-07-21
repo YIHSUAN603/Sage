@@ -22,6 +22,26 @@ export type LoadModels = () => Promise<ModelOption[]>;
 
 const loadModelsPlaceholder: LoadModels = async () => [];
 
+/** Sentinel select value that reveals the free-text model input. */
+const CUSTOM_MODEL = "__custom__";
+
+// Neither CLI can enumerate available models, so these are curated aliases (they
+// map to `--model`). Codex has no stable alias set — users type theirs (Custom…).
+const AGENT_MODEL_PRESETS: Record<Settings["agent_cli"], { value: string; label: string }[]> = {
+  claude: [
+    { value: "opus", label: "Opus" },
+    { value: "sonnet", label: "Sonnet" },
+    { value: "haiku", label: "Haiku" },
+    { value: "fable", label: "Fable" },
+  ],
+  codex: [],
+};
+
+/** Is `model` representable by the CLI's dropdown (empty = default, or a preset)? */
+function isModelPreset(cli: Settings["agent_cli"], model: string): boolean {
+  return model === "" || AGENT_MODEL_PRESETS[cli].some((p) => p.value === model);
+}
+
 function sortRecommendedFirst(models: ModelOption[]): ModelOption[] {
   return [...models].sort(
     (a, b) => Number(b.recommended ?? false) - Number(a.recommended ?? false),
@@ -107,10 +127,18 @@ export function SettingsDialog({
   const [pets, setPets] = useState<PetMeta[]>([]);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState(false);
+  const [cliCheck, setCliCheck] = useState<{
+    status: "checking" | "ok" | "missing";
+    text: string;
+  } | null>(null);
+  // Whether the model dropdown is in "Custom…" mode (free-text id, not a preset).
+  const [customModel, setCustomModel] = useState(false);
 
   useEffect(() => {
     if (!open) return;
-    setDraft(useSettingsStore.getState().settings);
+    const current = useSettingsStore.getState().settings;
+    setDraft(current);
+    setCustomModel(!isModelPreset(current.agent_cli, current.agent_cli_model));
     setModelsError(false);
     let cancelled = false;
     loadChatModels()
@@ -132,8 +160,36 @@ export function SettingsDialog({
     };
   }, [open, loadChatModels, loadObserveModels]);
 
+  // Probe the selected agent CLI (debounced) so a missing binary shows up here
+  // rather than as a cryptic error on the first message.
+  useEffect(() => {
+    if (!open || draft.backend !== "agent_cli") {
+      setCliCheck(null);
+      return;
+    }
+    let cancelled = false;
+    setCliCheck({ status: "checking", text: t("settings.agentCliChecking") });
+    const handle = setTimeout(() => {
+      requireIpc()
+        .checkAgentCli(draft.agent_cli, draft.agent_cli_path.trim())
+        .then(
+          (version) =>
+            !cancelled &&
+            setCliCheck({ status: "ok", text: t("settings.agentCliDetected", { version }) }),
+        )
+        .catch(
+          () => !cancelled && setCliCheck({ status: "missing", text: t("settings.agentCliMissing") }),
+        );
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [open, draft.backend, draft.agent_cli, draft.agent_cli_path, t]);
+
   if (!open) return null;
 
+  const useAgentCli = draft.backend === "agent_cli";
   const patch = (p: Partial<Settings>) => setDraft((d) => ({ ...d, ...p }));
 
   // Pick a pet folder, copy it into <config>/pets/, then select it. The
@@ -215,32 +271,120 @@ export function SettingsDialog({
         </label>
 
         <label className="field">
-          <span>OpenRouter API key</span>
-          <input
-            type="password"
-            value={draft.api_key}
-            placeholder="sk-or-…"
-            autoComplete="off"
-            onChange={(e) => patch({ api_key: e.currentTarget.value })}
-          />
+          <span>{t("settings.backend")}</span>
+          <select
+            value={draft.backend}
+            onChange={(e) =>
+              patch({ backend: e.currentTarget.value as Settings["backend"] })
+            }
+          >
+            <option value="openrouter">{t("settings.backendOpenRouter")}</option>
+            <option value="agent_cli">{t("settings.backendAgentCli")}</option>
+          </select>
         </label>
 
-        <ModelField
-          label={t("settings.chatModel")}
-          value={draft.chat_model}
-          placeholder={t("settings.chatModelPlaceholder")}
-          models={chatModels}
-          errorText={modelsError ? t("settings.modelsError") : undefined}
-          onChange={(id) => patch({ chat_model: id })}
-        />
+        {useAgentCli && (
+          <>
+            <label className="field">
+              <span>{t("settings.agentCli")}</span>
+              <select
+                value={draft.agent_cli}
+                onChange={(e) => {
+                  const cli = e.currentTarget.value as Settings["agent_cli"];
+                  patch({ agent_cli: cli });
+                  // A model set for the old CLI may not be a preset of the new one.
+                  setCustomModel(!isModelPreset(cli, draft.agent_cli_model));
+                }}
+              >
+                <option value="claude">Claude Code</option>
+                <option value="codex">Codex</option>
+              </select>
+              <input
+                type="text"
+                value={draft.agent_cli_path}
+                placeholder={t("settings.agentCliPathPlaceholder")}
+                autoComplete="off"
+                onChange={(e) => patch({ agent_cli_path: e.currentTarget.value })}
+              />
+              {cliCheck && (
+                <span
+                  className={`field-hint${cliCheck.status === "missing" ? " field-hint-error" : ""}`}
+                >
+                  {cliCheck.text}
+                </span>
+              )}
+              <span className="field-hint">{t("settings.agentCliReadOnly")}</span>
+              {draft.agent_cli === "codex" && (
+                <span className="field-hint">{t("settings.agentCliCodexObserve")}</span>
+              )}
+            </label>
 
-        <ModelField
-          label={t("settings.observeModel")}
-          value={draft.observe_model}
-          placeholder={t("settings.observeModelPlaceholder")}
-          models={observeModels}
-          onChange={(id) => patch({ observe_model: id })}
-        />
+            <label className="field">
+              <span>{t("settings.agentCliModel")}</span>
+              <select
+                value={customModel ? CUSTOM_MODEL : draft.agent_cli_model}
+                onChange={(e) => {
+                  const v = e.currentTarget.value;
+                  if (v === CUSTOM_MODEL) {
+                    setCustomModel(true);
+                  } else {
+                    setCustomModel(false);
+                    patch({ agent_cli_model: v });
+                  }
+                }}
+              >
+                <option value="">{t("settings.agentCliModelDefault")}</option>
+                {AGENT_MODEL_PRESETS[draft.agent_cli].map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+                <option value={CUSTOM_MODEL}>{t("settings.agentCliModelCustom")}</option>
+              </select>
+              {customModel && (
+                <input
+                  type="text"
+                  value={draft.agent_cli_model}
+                  placeholder={t("settings.agentCliModelPlaceholder")}
+                  autoComplete="off"
+                  onChange={(e) => patch({ agent_cli_model: e.currentTarget.value })}
+                />
+              )}
+            </label>
+          </>
+        )}
+
+        {!useAgentCli && (
+          <>
+            <label className="field">
+              <span>OpenRouter API key</span>
+              <input
+                type="password"
+                value={draft.api_key}
+                placeholder="sk-or-…"
+                autoComplete="off"
+                onChange={(e) => patch({ api_key: e.currentTarget.value })}
+              />
+            </label>
+
+            <ModelField
+              label={t("settings.chatModel")}
+              value={draft.chat_model}
+              placeholder={t("settings.chatModelPlaceholder")}
+              models={chatModels}
+              errorText={modelsError ? t("settings.modelsError") : undefined}
+              onChange={(id) => patch({ chat_model: id })}
+            />
+
+            <ModelField
+              label={t("settings.observeModel")}
+              value={draft.observe_model}
+              placeholder={t("settings.observeModelPlaceholder")}
+              models={observeModels}
+              onChange={(id) => patch({ observe_model: id })}
+            />
+          </>
+        )}
 
         <div className="field field-row">
           <label className="switch-label">

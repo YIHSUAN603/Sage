@@ -16,6 +16,7 @@ import { useObservationStore } from "../store/observation.ts";
 import { useSettingsStore } from "../store/settings.ts";
 import { showBubbleWindow } from "../windows/chatToggle.ts";
 import { createBubbleGate } from "./gate.ts";
+import { createRunObserve } from "./runObserve.ts";
 import { createSampler } from "./sampler.ts";
 
 async function broadcast(event: string, payload: unknown): Promise<void> {
@@ -82,10 +83,7 @@ export function useObservation(): ObservationHandle {
     let askTrail: string[] = [];
     const gate = createBubbleGate({
       ipc,
-      getModel() {
-        const s = useSettingsStore.getState().settings;
-        return (s.observe_model.trim() || s.chat_model).trim();
-      },
+      runObserve: createRunObserve(ipc, () => useSettingsStore.getState().settings),
       onBubble: presentBubble,
       onDebug(message) {
         devLog("ask:", message);

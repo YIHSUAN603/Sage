@@ -1,3 +1,4 @@
+mod agent_cli;
 mod capture;
 mod context;
 mod llm;
@@ -69,6 +70,8 @@ pub fn run() {
             pets::read_pet_atlas,
             pets::import_pet,
             llm::chat_stream,
+            agent_cli::agent_stream,
+            agent_cli::check_agent_cli,
             capture::capture_screen,
             context::active_window
         ])

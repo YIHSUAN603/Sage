@@ -6,7 +6,7 @@
 import i18n from "../i18n/index.ts";
 import type { ChatMessage, ContentPart, SageIpc } from "../ipc/contract.ts";
 import { gateSystem } from "../store/persona.ts";
-import { createDeltaAccumulator } from "../llm/openrouter.ts";
+import type { RunObserve } from "./runObserve.ts";
 
 /** One active-window observation, kept for the ask prompt's recent-activity list. */
 export interface WindowSample {
@@ -17,9 +17,9 @@ export interface WindowSample {
 }
 
 export interface GateOptions {
-  ipc: Pick<SageIpc, "captureScreen" | "chatStream">;
-  /** Observe model id (caller applies the chat-model fallback). Empty ⇒ stay silent. */
-  getModel(): string;
+  ipc: Pick<SageIpc, "captureScreen">;
+  /** Run one observation turn against the active backend; null ⇒ nothing to say. */
+  runObserve: RunObserve;
   /** A remark that passed the gate — show it as a bubble. */
   onBubble(text: string, reason: string): void;
   /** Samples kept for the recent-activity context. Default 60. */
@@ -50,12 +50,6 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
   /** One model round-trip; returns the remark or null (silent/error). */
   async function ask(reason: string): Promise<string | null> {
-    const model = options.getModel().trim();
-    if (!model) {
-      debug("沒有可用的模型（觀察/聊天模型都未設定）");
-      return null; // nothing configured — never burn an error on the user
-    }
-
     // Screenshot is best-effort: permission denied / observation just turned
     // off falls back to the title-only prompt (PLAN privacy constraint).
     let screenshot: string | null = null;
@@ -94,21 +88,12 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       { role: "user", content },
     ];
 
-    const acc = createDeltaAccumulator();
-    try {
-      await options.ipc.chatStream({ model, messages }, (event) => acc.push(event));
-    } catch (err) {
-      // network/invoke failure — proactive chatter must never error at the user
-      debug(`chat_stream 呼叫失敗：${err instanceof Error ? err.message : String(err)}`);
-      return null;
-    }
-    const { message, error } = acc.finish();
-    if (error) {
-      debug(`串流回報錯誤：${error.kind}${error.status ? ` (${error.status})` : ""} — ${error.message}`);
-      return null;
-    }
+    // The backend (OpenRouter / agent CLI) handles its own errors and returns
+    // null on failure — proactive chatter must never surface an error to the user.
+    const raw = await options.runObserve(messages, debug);
+    if (raw === null) return null;
 
-    const reply = typeof message.content === "string" ? message.content.trim() : "";
+    const reply = raw.trim();
     if (!reply || reply.toUpperCase() === "SILENT") {
       debug(reply ? "模型回 SILENT（判斷沒什麼值得說）" : "模型回覆是空的");
       return null;

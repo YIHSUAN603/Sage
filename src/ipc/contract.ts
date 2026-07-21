@@ -10,6 +10,18 @@
 // ---------------------------------------------------------------------------
 
 export interface Settings {
+  /**
+   * Which LLM backend drives chat + observation.
+   * "openrouter" (default) uses the OpenRouter HTTP API; "agent_cli" shells out
+   * to a local agent CLI (`agent_cli`) that runs its own read-only tool loop.
+   */
+  backend: "openrouter" | "agent_cli";
+  /** Which agent CLI to use when backend === "agent_cli". */
+  agent_cli: "claude" | "codex";
+  /** Optional absolute path to the agent CLI binary; empty ⇒ resolve on PATH. */
+  agent_cli_path: string;
+  /** Model to pass the agent CLI (claude --model / codex -m); empty ⇒ CLI default. */
+  agent_cli_model: string;
   api_key: string;
   /** Model used for chat + tool calling (must support `tools`). */
   chat_model: string;
@@ -29,6 +41,10 @@ export interface Settings {
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
 export const DEFAULT_SETTINGS: Settings = {
+  backend: "openrouter",
+  agent_cli: "claude",
+  agent_cli_path: "",
+  agent_cli_model: "",
   api_key: "",
   chat_model: "",
   observe_model: "",
@@ -116,6 +132,34 @@ export type StreamEvent =
   | { type: "error"; kind: StreamErrorKind; status?: number; message: string };
 
 // ---------------------------------------------------------------------------
+// Agent-CLI stream — what `agent_stream` emits over a Tauri Channel. Unlike the
+// OpenAI-style StreamEvent, a local agent CLI (claude / codex) runs its own tool
+// loop, so it reports whole tool calls and results rather than sliced deltas.
+// A Rust adapter maps each CLI's native JSON stream onto this shape.
+// ---------------------------------------------------------------------------
+
+export type AgentStreamEvent =
+  /** A fragment of streamed assistant text. */
+  | { type: "delta"; content: string }
+  /** The CLI invoked one of its own tools. `input` is the raw arguments object. */
+  | { type: "tool_use"; id: string; name: string; input: unknown }
+  /** The result of a prior tool_use (same `id`). `content` is already stringified. */
+  | { type: "tool_result"; id: string; content: string; is_error?: boolean }
+  /** The turn finished. */
+  | { type: "done"; is_error?: boolean }
+  /** Spawn / not-found / auth failure — the CLI never produced a usable turn. */
+  | { type: "error"; kind: StreamErrorKind; message: string };
+
+/** Request body for `agent_stream`. `purpose` lets observe run tool-free + terse. */
+export interface AgentRequest {
+  cli: "claude" | "codex";
+  messages: ChatMessage[];
+  purpose: "chat" | "observe";
+  /** Model override for the CLI; empty ⇒ the CLI's own default. */
+  model: string;
+}
+
+// ---------------------------------------------------------------------------
 // Skills — mirrors src-tauri/src/skills.rs. A skill is a folder under
 // <app_config_dir>/skills/ containing a SKILL.md (optional frontmatter:
 // name + description) whose body the model loads on demand via `use_skill`.
@@ -170,6 +214,8 @@ export interface ActiveWindow {
 
 export const COMMANDS = {
   chatStream: "chat_stream",
+  agentStream: "agent_stream",
+  checkAgentCli: "check_agent_cli",
   toolReadFile: "tool_read_file",
   listSkills: "list_skills",
   readSkill: "read_skill",
@@ -198,6 +244,21 @@ export interface SageIpc {
     onEvent: (event: StreamEvent) => void,
     signal?: AbortSignal,
   ): Promise<void>;
+  /**
+   * Stream one turn from a local agent CLI (claude / codex). The CLI runs its
+   * own read-only tool loop; events arrive via `onEvent` until "done" or "error".
+   * `signal` aborts consumption on the frontend side.
+   */
+  agentStream(
+    req: AgentRequest,
+    onEvent: (event: AgentStreamEvent) => void,
+    signal?: AbortSignal,
+  ): Promise<void>;
+  /**
+   * Probe an agent CLI (`<bin> --version`). Resolves with its version string, or
+   * rejects when the binary can't be found/run. `path` empty ⇒ resolve on PATH.
+   */
+  checkAgentCli(cli: AgentRequest["cli"], path: string): Promise<string>;
   /** Read a local UTF-8 file (≤256KB). Rejects with a message on failure. */
   toolReadFile(path: string): Promise<string>;
   /** Installed skills' metadata (scans <config_dir>/skills/, creating it if needed). */

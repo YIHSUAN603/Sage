@@ -3,6 +3,8 @@
 // runs under `node --experimental-strip-types` without a bundler.
 import type {
   ActiveWindow,
+  AgentRequest,
+  AgentStreamEvent,
   ChatRequest,
   Pet,
   PetMeta,
@@ -16,6 +18,8 @@ import { DEFAULT_SETTINGS } from "./contract.ts";
 export interface MockIpcOptions {
   /** One StreamEvent sequence per chatStream call, consumed in order. */
   script?: StreamEvent[][];
+  /** One AgentStreamEvent sequence per agentStream call, consumed in order. */
+  agentScript?: AgentStreamEvent[][];
   /** Fake filesystem for toolReadFile. */
   files?: Record<string, string>;
   /** Installed skills for listSkills/readSkill. Defaults to none. */
@@ -44,6 +48,8 @@ export interface MockIpc extends SageIpc {
   calls: { command: string; args?: unknown }[];
   /** The requests chatStream received, in order. */
   chatRequests: ChatRequest[];
+  /** The requests agentStream received, in order. */
+  agentRequests: AgentRequest[];
 }
 
 /** A stream that answers "hi" — with the tool_call arguments sliced across
@@ -69,6 +75,18 @@ export const DEFAULT_SCRIPT: StreamEvent[][] = [
   ],
 ];
 
+/** An agent-CLI stream that reads a file then answers — mirrors how claude/codex
+ * report a whole tool call + result rather than sliced deltas. */
+export const DEFAULT_AGENT_SCRIPT: AgentStreamEvent[][] = [
+  [
+    { type: "delta", content: "Let me look at that file." },
+    { type: "tool_use", id: "toolu_1", name: "Read", input: { file_path: "/tmp/a.txt" } },
+    { type: "tool_result", id: "toolu_1", content: "hello." },
+    { type: "delta", content: "The file says hello." },
+    { type: "done", is_error: false },
+  ],
+];
+
 // Smallest useful stand-in for a real capture; content never matters in tests.
 const TINY_JPEG_DATA_URL =
   "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
@@ -79,6 +97,7 @@ const TINY_PNG_DATA_URL =
 
 export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
   const script = options.script ?? DEFAULT_SCRIPT;
+  const agentScript = options.agentScript ?? DEFAULT_AGENT_SCRIPT;
   const files = { ...(options.files ?? {}) };
   const skills = [...(options.skills ?? [])];
   const pets = [...(options.pets ?? [])];
@@ -87,14 +106,17 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
   const screenshot = options.screenshot ?? TINY_JPEG_DATA_URL;
   let settings: Settings = { ...DEFAULT_SETTINGS, ...(options.settings ?? {}) };
   let streamCall = 0;
+  let agentCall = 0;
   let windowCall = 0;
 
   const calls: MockIpc["calls"] = [];
   const chatRequests: ChatRequest[] = [];
+  const agentRequests: AgentRequest[] = [];
 
   return {
     calls,
     chatRequests,
+    agentRequests,
 
     async chatStream(req, onEvent, signal) {
       calls.push({ command: "chat_stream", args: req });
@@ -108,6 +130,23 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
         // real SSE stream, and abort can land mid-stream.
         await Promise.resolve();
       }
+    },
+
+    async agentStream(req, onEvent, signal) {
+      calls.push({ command: "agent_stream", args: req });
+      agentRequests.push(req);
+      const events = agentScript[agentCall % agentScript.length];
+      agentCall += 1;
+      for (const event of events) {
+        if (signal?.aborted) return;
+        onEvent(event);
+        await Promise.resolve();
+      }
+    },
+
+    async checkAgentCli(cli, path) {
+      calls.push({ command: "check_agent_cli", args: { cli, path } });
+      return `${cli} (mock)`;
     },
 
     async toolReadFile(path) {

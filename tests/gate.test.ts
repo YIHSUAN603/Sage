@@ -1,13 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import i18n, { i18nReady } from "../src/i18n/index.ts";
-import type { ContentPart, StreamEvent } from "../src/ipc/contract.ts";
-import { createMockIpc } from "../src/ipc/mock.ts";
-import {
-  createBubbleGate,
-  type GateOptions,
-  type WindowSample,
-} from "../src/observe/gate.ts";
+import type { ContentPart, Settings, StreamEvent } from "../src/ipc/contract.ts";
+import { DEFAULT_SETTINGS } from "../src/ipc/contract.ts";
+import { createMockIpc, type MockIpc } from "../src/ipc/mock.ts";
+import { createRunObserve } from "../src/observe/runObserve.ts";
+import { createBubbleGate, type WindowSample } from "../src/observe/gate.ts";
 
 // Assertions below match the zh-TW wording — pin the locale regardless of the
 // machine the tests run on.
@@ -27,15 +25,19 @@ interface Harness {
 }
 
 function createHarness(
-  ipc: GateOptions["ipc"],
-  overrides: Partial<GateOptions> = {},
+  ipc: MockIpc,
+  settingsOverride: Partial<Settings> = {},
 ): { gate: ReturnType<typeof createBubbleGate> } & Harness {
   const bubbles: Harness["bubbles"] = [];
+  const settings: Settings = {
+    ...DEFAULT_SETTINGS,
+    observe_model: "test/vision-model",
+    ...settingsOverride,
+  };
   const gate = createBubbleGate({
     ipc,
-    getModel: () => "test/vision-model",
+    runObserve: createRunObserve(ipc, () => settings),
     onBubble: (text, reason) => bubbles.push({ text, reason }),
-    ...overrides,
   });
   return { gate, bubbles };
 }
@@ -118,10 +120,34 @@ test("stream errors and empty models stay silent", async () => {
   assert.equal(errored.bubbles.length, 0);
 
   const idleIpc = createMockIpc({ settings: { observe_enabled: true } });
-  const unconfigured = createHarness(idleIpc, { getModel: () => "" });
+  const unconfigured = createHarness(idleIpc, { observe_model: "", chat_model: "" });
   assert.equal(await unconfigured.gate.forceAsk(), null);
   assert.equal(idleIpc.chatRequests.length, 0); // never even reached the model
   assert.equal(unconfigured.bubbles.length, 0);
+});
+
+test("agent-cli backend: codex observes title-only (screenshot stripped)", async () => {
+  const ipc = createMockIpc({
+    settings: { observe_enabled: true },
+    screenshot: "data:image/jpeg;base64,SHOT",
+    agentScript: [[{ type: "delta", content: "需要幫忙嗎？" }, { type: "done" }]],
+  });
+  const { gate, bubbles } = createHarness(ipc, {
+    backend: "agent_cli",
+    agent_cli: "codex",
+  });
+
+  gate.record(sample("Code", "main.rs"));
+  const reply = await gate.forceAsk();
+
+  assert.equal(reply, "需要幫忙嗎？");
+  assert.equal(bubbles.length, 1);
+  // Routed to the CLI, not OpenRouter, and with no image part.
+  assert.equal(ipc.chatRequests.length, 0);
+  assert.equal(ipc.agentRequests.length, 1);
+  assert.equal(ipc.agentRequests[0].cli, "codex");
+  assert.equal(ipc.agentRequests[0].purpose, "observe");
+  assert.equal(typeof ipc.agentRequests[0].messages[1].content, "string");
 });
 
 test("reset clears the recent-activity history", async () => {

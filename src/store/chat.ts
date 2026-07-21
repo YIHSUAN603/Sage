@@ -3,7 +3,12 @@
 import { create } from "zustand";
 import i18n from "../i18n/index.ts";
 import type { ChatMessage, SkillMeta } from "../ipc/contract.ts";
-import { AgentLoopError, runAgentLoop } from "../llm/loop.ts";
+import {
+  createAgentCliBackend,
+  createOpenRouterBackend,
+  type ChatBackend,
+} from "../llm/backend.ts";
+import { AgentLoopError } from "../llm/loop.ts";
 import { buildContextMessage } from "../observe/context.ts";
 import { createReadFileTool } from "../tools/readFile.ts";
 import { createToolRegistry } from "../tools/registry.ts";
@@ -46,8 +51,11 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (!trimmed || get().streaming) return;
 
     const ipc = requireIpc();
-    const model = useSettingsStore.getState().settings.chat_model.trim();
-    if (!model) {
+    const settings = useSettingsStore.getState().settings;
+    const useAgentCli = settings.backend === "agent_cli";
+    const model = settings.chat_model.trim();
+    // Agent-CLI backends need no OpenRouter model — the CLI brings its own.
+    if (!useAgentCli && !model) {
       set({ error: i18n.t("errors.noChatModel") });
       return;
     }
@@ -62,7 +70,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     // 但不進 store.messages（對話歷史保持乾淨，UI 本來也不渲染 system）。
     // 換夥伴後，同樣以 request-only system 注入夥伴人格（沒選夥伴時為 null，維持現況）。
     const persona = await chatPersonaSystem();
-    const observed = useSettingsStore.getState().settings.observe_enabled
+    const observed = settings.observe_enabled
       ? buildContextMessage(useObservationStore.getState().recent, Date.now())
       : null;
     const prefix: ChatMessage[] = [];
@@ -75,24 +83,29 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     // / tool 訊息一落地就進 UI（工具卡片即時出現），onDelta 驅動串流游標。
     // Skill 目錄每次 send 重掃（本地 fs，很便宜）：丟新 skill 進資料夾立即生效；
     // 掃描失敗只代表這輪沒有 use_skill 工具，聊天照常。
-    let skills: SkillMeta[] = [];
-    try {
-      skills = await ipc.listSkills();
-    } catch {
-      skills = [];
+    let backend: ChatBackend;
+    if (useAgentCli) {
+      // The CLI runs its own read-only tool loop and skills; Sage's registry
+      // (read_file / use_skill) is only wired to the OpenRouter backend.
+      backend = createAgentCliBackend(ipc, settings.agent_cli, settings.agent_cli_model, "chat");
+    } else {
+      let skills: SkillMeta[] = [];
+      try {
+        skills = await ipc.listSkills();
+      } catch {
+        skills = [];
+      }
+      const registry = createToolRegistry([
+        createReadFileTool(ipc),
+        ...(skills.length > 0 ? [createSkillTool(ipc, skills)] : []),
+      ]);
+      backend = createOpenRouterBackend(ipc, model, registry);
     }
-    const registry = createToolRegistry([
-      createReadFileTool(ipc),
-      ...(skills.length > 0 ? [createSkillTool(ipc, skills)] : []),
-    ]);
     let partial = "";
 
     try {
-      await runAgentLoop({
-        ipc,
-        model,
+      await backend.runTurn({
         messages: requestMessages,
-        tools: registry,
         signal: abort.signal,
         onDelta(text) {
           partial += text;

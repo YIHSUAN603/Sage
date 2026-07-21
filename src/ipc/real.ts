@@ -5,6 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   COMMANDS,
   type ActiveWindow,
+  type AgentStreamEvent,
   type Pet,
   type PetMeta,
   type SageIpc,
@@ -20,6 +21,18 @@ export const realIpc: SageIpc = {
       if (!signal?.aborted) onEvent(event);
     };
     await invoke(COMMANDS.chatStream, { channel, req });
+  },
+
+  async agentStream(req, onEvent, signal) {
+    const channel = new Channel<AgentStreamEvent>();
+    channel.onmessage = (event) => {
+      if (!signal?.aborted) onEvent(event);
+    };
+    await invoke(COMMANDS.agentStream, { channel, req });
+  },
+
+  checkAgentCli(cli, path): Promise<string> {
+    return invoke(COMMANDS.checkAgentCli, { cli, path });
   },
 
   toolReadFile(path: string): Promise<string> {

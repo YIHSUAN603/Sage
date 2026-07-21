@@ -7,6 +7,18 @@ use tauri::Manager;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
+    /// Which LLM backend drives chat + observation: "openrouter" or "agent_cli".
+    #[serde(default = "default_backend")]
+    pub backend: String,
+    /// Which agent CLI to use when backend == "agent_cli": "claude" or "codex".
+    #[serde(default = "default_agent_cli")]
+    pub agent_cli: String,
+    /// Optional absolute path to the agent CLI binary; empty ⇒ resolve on PATH.
+    #[serde(default)]
+    pub agent_cli_path: String,
+    /// Model to pass the agent CLI; empty ⇒ the CLI's own default.
+    #[serde(default)]
+    pub agent_cli_model: String,
     #[serde(default)]
     pub api_key: String,
     /// Model used for chat + tool calling (must support `tools`).
@@ -37,6 +49,14 @@ fn default_interval() -> u32 {
     8
 }
 
+fn default_backend() -> String {
+    "openrouter".into()
+}
+
+fn default_agent_cli() -> String {
+    "claude".into()
+}
+
 fn default_language() -> String {
     "auto".into()
 }
@@ -44,6 +64,10 @@ fn default_language() -> String {
 impl Default for Settings {
     fn default() -> Self {
         Settings {
+            backend: default_backend(),
+            agent_cli: default_agent_cli(),
+            agent_cli_path: String::new(),
+            agent_cli_model: String::new(),
             api_key: String::new(),
             chat_model: String::new(),
             observe_model: String::new(),
