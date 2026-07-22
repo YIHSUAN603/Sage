@@ -3412,6 +3412,7 @@ version = "0.3.2"
 dependencies = [
  "active-win-pos-rs",
  "base64 0.22.1",
+ "core-foundation 0.10.1",
  "futures-util",
  "regex",
  "reqwest 0.12.28",

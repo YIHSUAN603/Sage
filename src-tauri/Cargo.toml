@@ -35,3 +35,9 @@ regex = "1"
 # Wayland sessions have no XScreenSaver extension anyway.
 user-idle = { version = "0.6", default-features = false, features = ["dbus"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# AX semantic snapshot backend (semantic_macos.rs): CFString/CFArray handling
+# for the hand-declared AXUIElement FFI. Already a transitive dependency of
+# active-win-pos-rs, so this adds no new code to the build.
+core-foundation = "0.10"
+

@@ -21,7 +21,6 @@ pub struct FocusedWindow {
     pub app_name: String,
     pub title: String,
     /// Owner pid — the macOS AX backend builds AXUIElementCreateApplication from it.
-    #[allow(dead_code)] // consumed by the platform semantic backends
     pub process_id: u32,
     #[allow(dead_code)] // consumed by the platform semantic backends
     pub window_id: Option<u32>,
