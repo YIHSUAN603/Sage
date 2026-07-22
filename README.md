@@ -57,6 +57,27 @@ Observation is a hard opt-in, not a default:
 - Screen capture on macOS requires the Screen Recording permission (TCC); if denied, Sage falls back to window-title-only mode.
 - Your API key is stored in the local app config directory and stays out of version control and out of the webview.
 
+## Install
+
+### macOS (Homebrew, recommended)
+
+```sh
+brew install --cask --no-quarantine YIHSUAN603/tap/sage
+```
+
+- Use the full name `YIHSUAN603/tap/sage` — the official Homebrew repo has an unrelated `sage` cask (SageMath).
+- `--no-quarantine` is needed because macOS builds are unsigned; without it Gatekeeper reports the app as "damaged".
+
+To upgrade later: `brew upgrade --cask sage` (or use the in-app updater).
+
+### Manual download
+
+Grab the installer for your platform from the [Releases page](../../releases). If you install the macOS `.dmg` directly, clear the quarantine flag before first launch:
+
+```sh
+xattr -cr /Applications/sage.app
+```
+
 ## Getting started
 
 ### Prerequisites
@@ -100,7 +121,7 @@ Installed apps update themselves via `tauri-plugin-updater`: Settings → "Check
 
 Update packages are signed with a minisign key (public key in `tauri.conf.json`; private key stays out of the repo). CI signs them via the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` Actions secrets — if the private key is ever lost, generate a new pair with `npm run tauri signer generate`, update the pubkey, and re-set the secrets (older installs will then need a manual reinstall).
 
-> macOS builds are unsigned for now — first launch requires right-click → Open to bypass Gatekeeper. In-app updates still work (the updater verifies its own minisign signature). On Linux only the AppImage self-updates; `.deb`/`.rpm` users update through their package manager or manually.
+> macOS builds are unsigned for now — install via [Homebrew](#macos-homebrew-recommended) or clear the quarantine flag manually (see [Install](#install)). In-app updates still work (the updater verifies its own minisign signature). On Linux only the AppImage self-updates; `.deb`/`.rpm` users update through their package manager or manually.
 
 ## Project structure
 
