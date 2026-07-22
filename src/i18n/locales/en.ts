@@ -73,6 +73,9 @@ export default {
       observeModel: "Observe model (must accept image input)",
       observeModelPlaceholder: "May be the same as the chat model",
       observeEnable: "Enable observation (off by default)",
+      idleChatter: "Chat even when observation is off",
+      idleChatterHint:
+        "With observation off, your companion still pipes up on the chatter cadence — without capturing the screen or window info at all.",
       interval: "Interval",
       seconds: "s",
       captureMode: "Capture area",
@@ -144,6 +147,9 @@ export default {
       noScreenshot: "(Screenshot unavailable — only window titles to go on.)",
       forceAskReason: "The user explicitly asked about the current context",
       observeReason: "Routine check-in on what the user is doing",
+      idleReason: "Routine hello to keep the user company",
+      idleContext:
+        "(Desktop observation is off — you can't see the user's screen or windows and don't know what they're doing. Just keep them company like a friend: say hi, make small talk, or cheer them on, and never pretend you can see their work.)",
     },
     context: {
       intro:

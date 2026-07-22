@@ -24,6 +24,11 @@ export interface GateOptions {
   onBubble(text: string, reason: string): void;
   /** Samples kept for the recent-activity context. Default 60. */
   historyLimit?: number;
+  /**
+   * Idle-chatter mode (observation off): never captures, never mentions
+   * window activity — the ask is a pure keep-them-company prompt.
+   */
+  idle?: boolean;
   /** Diagnostic trace of each ask (capture ok/fail, stream error, reply). */
   onDebug?(message: string): void;
 }
@@ -52,13 +57,16 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
   async function ask(reason: string): Promise<string | null> {
     // Screenshot is best-effort: permission denied / observation just turned
     // off falls back to the title-only prompt (PLAN privacy constraint).
+    // Idle mode never even tries — there is nothing to observe.
     let screenshot: string | null = null;
-    try {
-      screenshot = await options.ipc.captureScreen();
-      debug(`截圖成功（${Math.round(screenshot.length / 1024)}KB data URL）`);
-    } catch (err) {
-      screenshot = null;
-      debug(`截圖失敗，退回純文字模式：${err instanceof Error ? err.message : String(err)}`);
+    if (!options.idle) {
+      try {
+        screenshot = await options.ipc.captureScreen();
+        debug(`截圖成功（${Math.round(screenshot.length / 1024)}KB data URL）`);
+      } catch (err) {
+        screenshot = null;
+        debug(`截圖失敗，退回純文字模式：${err instanceof Error ? err.message : String(err)}`);
+      }
     }
 
     const recentLines = samples
@@ -68,14 +76,19 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       .join("\n");
     // Prompt strings resolve at ask time so a language switch takes effect
     // immediately (the reply language follows the UI language).
-    const text = [
-      i18n.t("gate.trigger", { ns: "prompt", reason }),
-      i18n.t("gate.recentActivity", { ns: "prompt" }),
-      recentLines,
-      i18n.t(screenshot ? "gate.withScreenshot" : "gate.noScreenshot", {
-        ns: "prompt",
-      }),
-    ].join("\n");
+    const text = options.idle
+      ? [
+          i18n.t("gate.trigger", { ns: "prompt", reason }),
+          i18n.t("gate.idleContext", { ns: "prompt" }),
+        ].join("\n")
+      : [
+          i18n.t("gate.trigger", { ns: "prompt", reason }),
+          i18n.t("gate.recentActivity", { ns: "prompt" }),
+          recentLines,
+          i18n.t(screenshot ? "gate.withScreenshot" : "gate.noScreenshot", {
+            ns: "prompt",
+          }),
+        ].join("\n");
 
     const content: string | ContentPart[] = screenshot
       ? [

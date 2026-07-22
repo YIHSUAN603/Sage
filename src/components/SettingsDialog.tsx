@@ -664,6 +664,20 @@ export function SettingsDialog({
           </label>
         </div>
 
+        <div className="field">
+          <label className="switch-label">
+            <input
+              type="checkbox"
+              checked={draft.idle_chatter_enabled}
+              onChange={(e) =>
+                patch({ idle_chatter_enabled: e.currentTarget.checked })
+              }
+            />
+            <span>{t("settings.idleChatter")}</span>
+          </label>
+          <span className="field-hint">{t("settings.idleChatterHint")}</span>
+        </div>
+
         <label className="field">
           <span>{t("settings.captureMode")}</span>
           <select

@@ -35,6 +35,12 @@ export interface Settings {
   observe_model: string;
   /** Master switch for the observation subsystem. Off by default (privacy). */
   observe_enabled: boolean;
+  /**
+   * Proactive chatter while observation is OFF: the companion still speaks up
+   * on the proactive cadence, but sees nothing — no screenshots, no window
+   * titles ever leave the machine. On by default (pure companionship).
+   */
+  idle_chatter_enabled: boolean;
   /** Seconds between active-window polls when observing. */
   observe_interval: number;
   /**
@@ -81,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chat_model: "",
   observe_model: "",
   observe_enabled: false,
+  idle_chatter_enabled: true,
   observe_interval: 8,
   observe_blocklist: [],
   observe_capture_mode: "window",

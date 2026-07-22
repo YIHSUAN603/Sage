@@ -1,7 +1,9 @@
 // S5.1/S5.3/S5.4 glue — runs in the avatar window (the only always-visible
 // webview, so its timers are never throttled). Wires sampler → observation
 // store + cross-window context broadcast + a time-driven bubble gate, honoring
-// the settings switch: observe_enabled off ⇒ everything stops, nothing captured.
+// the settings switch: observe_enabled off ⇒ sampling/capture stops entirely;
+// idle_chatter_enabled then keeps the companion talking on the same cadence
+// with a see-nothing prompt (no screenshots, no window titles).
 import { useEffect, useRef } from "react";
 import {
   BUBBLE_EVENT,
@@ -62,14 +64,23 @@ interface DevHelpers {
   fakeBubble(): void;
 }
 
-/** Drive the observation subsystem while `observe_enabled` is on. */
+/**
+ * Drive the proactive subsystem: full observation while `observe_enabled` is
+ * on; capture-free idle chatter while it's off but `idle_chatter_enabled` is
+ * on (gated on settings having loaded, so a default-on switch never fires off
+ * stale defaults before the real values arrive).
+ */
 export function useObservation(): ObservationHandle {
   const enabled = useSettingsStore((s) => s.settings.observe_enabled);
+  const chatterEnabled = useSettingsStore((s) => s.settings.idle_chatter_enabled);
+  const loaded = useSettingsStore((s) => s.loaded);
   const intervalSec = useSettingsStore((s) => s.settings.observe_interval);
   const devRef = useRef<DevHelpers | null>(null);
 
+  const idleChatter = !enabled && chatterEnabled && loaded;
+
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled && !idleChatter) return;
     const ipc = requireIpc();
 
     // When each bubble was shown — drives the maxPerHour quota.
@@ -95,6 +106,7 @@ export function useObservation(): ObservationHandle {
     let askTrail: string[] = [];
     const gate = createBubbleGate({
       ipc,
+      idle: !enabled,
       runObserve: createRunObserve(ipc, () => useSettingsStore.getState().settings),
       onBubble: presentBubble,
       onDebug(message) {
@@ -126,30 +138,36 @@ export function useObservation(): ObservationHandle {
       };
     }
 
-    const sampler = createSampler({
-      ipc,
-      intervalMs: Math.max(2, intervalSec) * 1000,
-      onSample(window, at) {
-        devLog("sample:", window ? `${window.app_name} — ${window.title}` : "(none)");
-        useObservationStore.getState().pushContext(window, at);
-        const payload: ContextEventPayload = { window, at };
-        void broadcast(CONTEXT_EVENT, payload);
-        if (window) {
-          gate.record({ app_name: window.app_name, title: window.title, at });
-        }
-      },
-    });
+    // Window sampling exists only for observation — idle chatter must not
+    // touch the active window at all (that's the whole privacy point).
+    const sampler = enabled
+      ? createSampler({
+          ipc,
+          intervalMs: Math.max(2, intervalSec) * 1000,
+          onSample(window, at) {
+            devLog("sample:", window ? `${window.app_name} — ${window.title}` : "(none)");
+            useObservationStore.getState().pushContext(window, at);
+            const payload: ContextEventPayload = { window, at };
+            void broadcast(CONTEXT_EVENT, payload);
+            if (window) {
+              gate.record({ app_name: window.app_name, title: window.title, at });
+            }
+          },
+        })
+      : null;
 
-    // Time-driven observation: look immediately when observation turns on,
-    // then on the cooldown-derived random cadence. The model's SILENT reply
-    // filters content; the maxPerHour quota skips the ask (and its LLM call)
-    // entirely once enough bubbles surfaced within the rolling hour.
+    // Time-driven asks: look immediately when the loop starts (observation
+    // just turned on / app launched with idle chatter ⇒ a hello), then on the
+    // cooldown-derived random cadence. The model's SILENT reply filters
+    // content; the maxPerHour quota skips the ask (and its LLM call) entirely
+    // once enough bubbles surfaced within the rolling hour.
+    const askReasonKey = enabled ? "gate.observeReason" : "gate.idleReason";
     let askTimer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
     const runAsk = async () => {
       const { maxPerHour } = await proactiveTuning();
       if (underHourlyQuota(bubbleTimes, Date.now(), maxPerHour)) {
-        void gate.forceAsk(i18n.t("gate.observeReason", { ns: "prompt" }));
+        void gate.forceAsk(i18n.t(askReasonKey, { ns: "prompt" }));
       } else {
         devLog("ask skipped: hourly bubble quota reached (max", maxPerHour, "/h)");
       }
@@ -158,20 +176,24 @@ export function useObservation(): ObservationHandle {
       askTimer = setTimeout(() => void runAsk(), delay);
     };
 
-    devLog("observation started, interval", Math.max(2, intervalSec), "s");
-    sampler.start();
+    if (enabled) {
+      devLog("observation started, interval", Math.max(2, intervalSec), "s");
+    } else {
+      devLog("idle chatter started (observation off — nothing is captured)");
+    }
+    sampler?.start();
     askTimer = setTimeout(() => void runAsk(), 0);
     return () => {
-      devLog("observation stopped");
+      devLog(enabled ? "observation stopped" : "idle chatter stopped");
       devRef.current = null;
       stopped = true;
       if (askTimer) clearTimeout(askTimer);
-      sampler.stop();
+      sampler?.stop();
       gate.reset();
     };
-  }, [enabled, intervalSec]);
+  }, [enabled, idleChatter, intervalSec]);
 
-  const devAvailable = import.meta.env.DEV && enabled;
+  const devAvailable = import.meta.env.DEV && (enabled || idleChatter);
   return {
     observing: enabled,
     devForceAsk: devAvailable ? () => devRef.current?.forceAsk() : null,

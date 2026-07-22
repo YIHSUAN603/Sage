@@ -34,6 +34,10 @@ pub struct Settings {
     /// Master switch for the observation subsystem. Off by default (privacy).
     #[serde(default)]
     pub observe_enabled: bool,
+    /// Proactive chatter while observation is off: the companion still speaks
+    /// on the proactive cadence but sees nothing (no capture of any kind).
+    #[serde(default = "default_true")]
+    pub idle_chatter_enabled: bool,
     /// Seconds between active-window polls when observing.
     #[serde(default = "default_interval")]
     pub observe_interval: u32,
@@ -116,6 +120,7 @@ impl Default for Settings {
             chat_model: String::new(),
             observe_model: String::new(),
             observe_enabled: false,
+            idle_chatter_enabled: true,
             observe_interval: default_interval(),
             observe_blocklist: Vec::new(),
             observe_capture_mode: default_capture_mode(),

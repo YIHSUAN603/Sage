@@ -69,6 +69,9 @@ export default {
       observeModel: "觀察模型（需支援圖片輸入）",
       observeModelPlaceholder: "可與聊天模型相同",
       observeEnable: "開啟觀察（預設關閉）",
+      idleChatter: "沒開觀察也主動搭話",
+      idleChatterHint:
+        "觀察關閉時，夥伴仍會照搭話頻率隨口聊聊、打打氣——完全不擷取畫面或視窗資訊。",
       interval: "間隔",
       seconds: "秒",
       captureMode: "截圖範圍",
@@ -135,6 +138,9 @@ export default {
       noScreenshot: "（無法取得螢幕截圖，只有視窗標題可參考）",
       forceAskReason: "使用者主動詢問目前脈絡",
       observeReason: "定期看看使用者現在在忙什麼",
+      idleReason: "定期跟使用者搭句話",
+      idleContext:
+        "（目前沒有開啟桌面觀察，你看不到使用者的畫面或視窗，也不知道他在做什麼。就單純像朋友一樣搭句話——打個招呼、閒聊或打打氣，別假裝你看得到他的工作內容。）",
     },
     context: {
       intro:

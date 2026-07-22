@@ -27,6 +27,7 @@ interface Harness {
 function createHarness(
   ipc: MockIpc,
   settingsOverride: Partial<Settings> = {},
+  idle = false,
 ): { gate: ReturnType<typeof createBubbleGate> } & Harness {
   const bubbles: Harness["bubbles"] = [];
   const settings: Settings = {
@@ -36,6 +37,7 @@ function createHarness(
   };
   const gate = createBubbleGate({
     ipc,
+    idle,
     runObserve: createRunObserve(ipc, () => settings),
     onBubble: (text, reason) => bubbles.push({ text, reason }),
   });
@@ -168,6 +170,28 @@ test("agent-cli backend: codex observes title-only (screenshot stripped)", async
   assert.equal(ipc.agentRequests[0].cli, "codex");
   assert.equal(ipc.agentRequests[0].purpose, "observe");
   assert.equal(typeof ipc.agentRequests[0].messages[1].content, "string");
+});
+
+test("idle mode: no capture, no window activity — a pure companionship prompt", async () => {
+  // Screenshot IS available (observe on) — idle mode must not even try it.
+  const ipc = createMockIpc({
+    settings: { observe_enabled: true },
+    script: [reply("嗨嗨，工作順利嗎？")],
+    screenshot: "data:image/jpeg;base64,SHOT",
+  });
+  const { gate, bubbles } = createHarness(ipc, {}, true);
+
+  gate.record(sample("Code", "secret-project.rs"));
+  const replyText = await gate.forceAsk("定期跟使用者搭句話");
+
+  assert.equal(replyText, "嗨嗨，工作順利嗎？");
+  assert.equal(bubbles.length, 1);
+  assert.equal(ipc.chatRequests.length, 1);
+  const content = ipc.chatRequests[0].messages[1].content;
+  assert.equal(typeof content, "string"); // no image part ever attached
+  assert.match(content as string, /看不到使用者的畫面/); // the see-nothing framing
+  assert.doesNotMatch(content as string, /secret-project/); // recorded titles never leak
+  assert.doesNotMatch(content as string, /視窗標題/); // not the screenshot-failure fallback
 });
 
 test("reset clears the recent-activity history", async () => {

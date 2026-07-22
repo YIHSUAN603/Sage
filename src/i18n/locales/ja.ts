@@ -73,6 +73,9 @@ export default {
       observeModel: "観察モデル（画像入力対応が必要）",
       observeModelPlaceholder: "チャットモデルと同じでも可",
       observeEnable: "観察を有効にする（デフォルトはオフ）",
+      idleChatter: "観察がオフでも話しかける",
+      idleChatterHint:
+        "観察がオフの間も、相棒は話しかけ頻度に合わせて雑談や応援をします——画面やウィンドウ情報は一切取得しません。",
       interval: "間隔",
       seconds: "秒",
       captureMode: "キャプチャ範囲",
@@ -142,6 +145,9 @@ export default {
       noScreenshot: "（スクリーンショットを取得できないため、ウィンドウタイトルのみ参考）",
       forceAskReason: "ユーザーが現在のコンテキストについて自ら質問した",
       observeReason: "定期的にユーザーの様子をうかがう",
+      idleReason: "定期的にユーザーへひとこと声をかける",
+      idleContext:
+        "（デスクトップ観察はオフです。ユーザーの画面もウィンドウも見えず、何をしているかは分かりません。友だちのようにただ寄り添って、挨拶や雑談、応援のひとことをどうぞ。作業内容が見えているふりは絶対にしないでください。）",
     },
     context: {
       intro:
