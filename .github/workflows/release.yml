@@ -51,11 +51,51 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # macOS codesign 用的自簽憑證：讓 App 有「固定」的簽章身分，TCC 授權
+      # （輔助使用 / 資料夾存取）才能跨啟動、跨改版保留，否則 tccd 每次都對不回
+      # 先前的授權而重跳權限。憑證由 scripts/gen-selfsigned-cert.sh 產生一次後存為
+      # secrets。這裡「自己」建 keychain 並匯入，而非交給 tauri-action 內建匯入，
+      # 因為自簽憑證匯入後預設 NOT_TRUSTED，必須額外 add-trusted-cert 設為 code
+      # signing 可信根，codesign 才願意用 identity 名稱簽章。
+      - name: Import self-signed signing certificate (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/sage-signing.keychain-db"
+          P12="$RUNNER_TEMP/sage-cert.p12"
+          CER="$RUNNER_TEMP/sage-cert.pem"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$P12"
+          # 臨時 keychain：建立、設定 6h 不自動上鎖、解鎖、排進搜尋清單最前面
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          # 匯入私鑰+憑證並授權 codesign 取用（p12 須為 -legacy 格式，security 才讀得了）
+          security import "$P12" -k "$KEYCHAIN" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          # 自簽憑證匯入後預設 NOT_TRUSTED，codesign 會拒用其 identity 名稱。從
+          # keychain 匯出公開憑證（不經 openssl，避開其 legacy p12 相容性問題），
+          # 設為 code signing 可信根後 identity 才會 valid。
+          security find-certificate -c "$APPLE_SIGNING_IDENTITY" -p "$KEYCHAIN" > "$CER"
+          security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$CER"
+          rm -f "$P12" "$CER"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 用上一步匯入的自簽 identity 簽章。刻意不設 APPLE_CERTIFICATE（避免
+          # tauri-action 再做一次未設信任的匯入）與 APPLE_ID/APPLE_TEAM_ID（自簽
+          # 無法公證；Gatekeeper 隔離仍靠 Homebrew cask 的 xattr 清除）。此變數在
+          # Linux/Windows runner 上為空，Tauri 會忽略。
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           tagName: v__VERSION__
           releaseName: 'Sage v__VERSION__'
