@@ -1,5 +1,6 @@
-// runObserve's OpenRouter path: the data_collection privacy policy and its
-// no-eligible-provider fallback (strip the screenshot, retry title-only).
+// runObserve's OpenRouter path: the data_collection privacy policy and error
+// handling. Observation messages are always plain text (semantic snapshots,
+// never images), so there is no strip-and-retry path anymore.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type {
@@ -27,15 +28,9 @@ const NO_PROVIDER: StreamEvent[] = [
   },
 ];
 
-const withScreenshot: ChatMessage[] = [
+const textMessages: ChatMessage[] = [
   { role: "system", content: "gate system" },
-  {
-    role: "user",
-    content: [
-      { type: "text", text: "看看現在的畫面" },
-      { type: "image_url", image_url: { url: "data:image/jpeg;base64,SHOT" } },
-    ],
-  },
+  { role: "user", content: "看看現在的畫面文字" },
 ];
 
 function makeRunObserve(
@@ -45,7 +40,7 @@ function makeRunObserve(
   const ipc = createMockIpc({ settings: { observe_enabled: true }, script });
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
-    observe_model: "test/vision-model",
+    observe_model: "test/observe-model",
     ...settingsOverride,
   };
   return { ipc, run: createRunObserve(ipc, () => settings) };
@@ -53,7 +48,7 @@ function makeRunObserve(
 
 test("deny on (default): the request carries data_policy", async () => {
   const { ipc, run } = makeRunObserve([reply("嗨")]);
-  assert.equal(await run(withScreenshot), "嗨");
+  assert.equal(await run(textMessages), "嗨");
   assert.equal(ipc.chatRequests.length, 1);
   assert.equal(ipc.chatRequests[0].data_policy, "deny");
 });
@@ -62,43 +57,40 @@ test("deny off: no data_policy on the request", async () => {
   const { ipc, run } = makeRunObserve([reply("嗨")], {
     observe_deny_data_collection: false,
   });
-  assert.equal(await run(withScreenshot), "嗨");
+  assert.equal(await run(textMessages), "嗨");
   assert.equal(ipc.chatRequests[0].data_policy, undefined);
 });
 
-test("no eligible provider: retries once title-only, deny kept", async () => {
-  const { ipc, run } = makeRunObserve([NO_PROVIDER, reply("還在寫扣呀。")]);
-  assert.equal(await run(withScreenshot), "還在寫扣呀。");
-
-  assert.equal(ipc.chatRequests.length, 2);
-  // First attempt: screenshot included.
-  const first = ipc.chatRequests[0].messages[1].content;
-  assert.ok(Array.isArray(first) && first.some((p) => p.type === "image_url"));
-  // Retry: image stripped, text kept, privacy policy still on.
-  const retry = ipc.chatRequests[1];
-  assert.equal(retry.data_policy, "deny");
-  assert.equal(typeof retry.messages[1].content, "string");
-  assert.match(retry.messages[1].content as string, /看看現在的畫面/);
+test("a stream error stays silent — one attempt, no retry", async () => {
+  const { ipc, run } = makeRunObserve([NO_PROVIDER, reply("不該被叫到")]);
+  assert.equal(await run(textMessages), null);
+  assert.equal(ipc.chatRequests.length, 1); // no strip-and-retry path anymore
 });
 
-test("no retry when deny is off or no image was attached", async () => {
-  const denyOff = makeRunObserve([NO_PROVIDER], {
-    observe_deny_data_collection: false,
+test("observe_model falls back to chat_model when empty", async () => {
+  const { ipc, run } = makeRunObserve([reply("嗨")], {
+    observe_model: "",
+    chat_model: "test/chat-model",
   });
-  assert.equal(await denyOff.run(withScreenshot), null);
-  assert.equal(denyOff.ipc.chatRequests.length, 1);
-
-  const titleOnly = makeRunObserve([NO_PROVIDER]);
-  const textMessages: ChatMessage[] = [
-    { role: "system", content: "gate system" },
-    { role: "user", content: "只有標題" },
-  ];
-  assert.equal(await titleOnly.run(textMessages), null);
-  assert.equal(titleOnly.ipc.chatRequests.length, 1);
+  assert.equal(await run(textMessages), "嗨");
+  assert.equal(ipc.chatRequests[0].model, "test/chat-model");
 });
 
-test("retry that errors again stays silent", async () => {
-  const { ipc, run } = makeRunObserve([NO_PROVIDER, NO_PROVIDER]);
-  assert.equal(await run(withScreenshot), null);
-  assert.equal(ipc.chatRequests.length, 2);
+test("agent-cli backend: claude and codex take the same text-only path", async () => {
+  for (const cli of ["claude", "codex"] as const) {
+    const ipc = createMockIpc({
+      settings: { observe_enabled: true },
+      agentScript: [[{ type: "delta", content: "嗨" }, { type: "done" }]],
+    });
+    const settings: Settings = { ...DEFAULT_SETTINGS, backend: "agent_cli", agent_cli: cli };
+    const run = createRunObserve(ipc, () => settings);
+
+    assert.equal(await run(textMessages), "嗨");
+    assert.equal(ipc.chatRequests.length, 0);
+    assert.equal(ipc.agentRequests.length, 1);
+    assert.equal(ipc.agentRequests[0].cli, cli);
+    assert.equal(ipc.agentRequests[0].purpose, "observe");
+    // Messages pass through untouched — no image stripping, nothing to strip.
+    assert.deepEqual(ipc.agentRequests[0].messages, textMessages);
+  }
 });

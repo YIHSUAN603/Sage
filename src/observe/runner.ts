@@ -1,9 +1,10 @@
 // S5.1/S5.3/S5.4 glue — runs in the avatar window (the only always-visible
 // webview, so its timers are never throttled). Wires sampler → observation
 // store + cross-window context broadcast + a time-driven bubble gate, honoring
-// the settings switch: observe_enabled off ⇒ sampling/capture stops entirely;
-// idle_chatter_enabled then keeps the companion talking on the same cadence
-// with a see-nothing prompt (no window content, no window titles).
+// the settings switch: observe_enabled off ⇒ sampling/snapshot reads stop
+// entirely; idle_chatter_enabled then keeps the companion talking on the same
+// cadence with a see-nothing prompt (no window content, no window titles).
+// Either way, asks are skipped while the user is away from the keyboard.
 import { useEffect, useRef } from "react";
 import {
   BUBBLE_EVENT,
@@ -19,6 +20,7 @@ import { useSettingsStore } from "../store/settings.ts";
 import { showBubbleWindow } from "../windows/chatToggle.ts";
 import { proactiveTuning } from "../store/persona.ts";
 import { createBubbleGate } from "./gate.ts";
+import { IDLE_SKIP_SECONDS, shouldSkipWhenIdle } from "./idle.ts";
 import { pruneHourWindow, underHourlyQuota } from "./quota.ts";
 import { createRunObserve } from "./runObserve.ts";
 import { createSampler } from "./sampler.ts";
@@ -165,11 +167,31 @@ export function useObservation(): ObservationHandle {
     let askTimer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
     const runAsk = async () => {
-      const { maxPerHour } = await proactiveTuning();
-      if (underHourlyQuota(bubbleTimes, Date.now(), maxPerHour)) {
-        void gate.forceAsk(i18n.t(askReasonKey, { ns: "prompt" }));
+      // Nobody at the keyboard ⇒ nobody to talk to: skip the ask (and its
+      // LLM call) in both observation and idle-chatter mode, but keep the
+      // cadence — the next timer still fires. activityState never rejects
+      // per the contract; treat a failure as "active" just in case.
+      let idleSeconds = 0;
+      try {
+        idleSeconds = (await ipc.activityState()).idle_seconds;
+      } catch {
+        idleSeconds = 0;
+      }
+      if (shouldSkipWhenIdle(idleSeconds)) {
+        devLog(
+          "ask skipped: user idle for",
+          idleSeconds,
+          "s (threshold",
+          IDLE_SKIP_SECONDS,
+          "s)",
+        );
       } else {
-        devLog("ask skipped: hourly bubble quota reached (max", maxPerHour, "/h)");
+        const { maxPerHour } = await proactiveTuning();
+        if (underHourlyQuota(bubbleTimes, Date.now(), maxPerHour)) {
+          void gate.forceAsk(i18n.t(askReasonKey, { ns: "prompt" }));
+        } else {
+          devLog("ask skipped: hourly bubble quota reached (max", maxPerHour, "/h)");
+        }
       }
       const delay = await nextAskDelay();
       if (stopped) return;
