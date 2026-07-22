@@ -4,6 +4,7 @@ mod context;
 mod llm;
 mod pets;
 mod settings;
+mod shell_path;
 mod skills;
 mod tools;
 
@@ -28,6 +29,9 @@ fn tray_labels(language: &str) -> (&'static str, &'static str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Must run before anything spawns a child process: Finder-launched apps
+    // get a minimal PATH, which hides the agent CLIs (claude/codex).
+    shell_path::fix();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
