@@ -71,6 +71,16 @@ export default {
       observeEnable: "開啟觀察（預設關閉）",
       interval: "間隔",
       seconds: "秒",
+      captureMode: "截圖範圍",
+      captureModeWindow: "僅前景視窗（建議）",
+      captureModeScreen: "整個螢幕",
+      denyDataCollection: "只送給不保留資料的 provider",
+      denyDataCollectionHint:
+        "觀察請求要求 OpenRouter 只路由到不保留、不拿輸入訓練的 provider。部分免費模型可能因此無法附截圖，屆時自動退回純標題觀察。",
+      blocklist: "敏感視窗黑名單",
+      blocklistPlaceholder: "一行一項，例如：\n網銀\nLINE",
+      blocklistHint:
+        "App 名稱或視窗標題含任一關鍵字時：不截圖、標題以「[private]」遮蔽。內建名單（密碼管理器、登入頁、無痕視窗…）永遠生效。",
       language: "語言",
       languageAuto: "跟隨系統",
       companion: "夥伴",
@@ -88,7 +98,7 @@ export default {
       proactiveUnlimited: "不限",
       petSageError: "寫回寵物的 pet.json 失敗——個性與頻率未儲存。",
       privacyNote:
-        "觀察開啟後，Sage 會定期讀取目前視窗標題，必要時擷取螢幕縮圖送往 OpenRouter 判斷「有沒有值得一提的事」。截圖只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切擷取與上傳。",
+        "觀察開啟後，Sage 會定期讀取目前視窗標題，必要時擷取螢幕縮圖送往 OpenRouter 判斷「有沒有值得一提的事」。預設只截前景視窗；敏感視窗（密碼管理器、登入頁、無痕…）不截圖、標題會遮蔽，標題中的 email、卡號、金鑰也會先淨化。截圖只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切擷取與上傳。",
       cancel: "取消",
       save: "儲存",
       saving: "儲存中…",

@@ -71,6 +71,16 @@ export default {
       observeEnable: "开启观察（默认关闭）",
       interval: "间隔",
       seconds: "秒",
+      captureMode: "截图范围",
+      captureModeWindow: "仅前台窗口（推荐）",
+      captureModeScreen: "整个屏幕",
+      denyDataCollection: "只发送给不保留数据的 provider",
+      denyDataCollectionHint:
+        "观察请求要求 OpenRouter 只路由到不保留、不用输入训练的 provider。部分免费模型可能因此无法附截图，届时自动退回纯标题观察。",
+      blocklist: "敏感窗口黑名单",
+      blocklistPlaceholder: "一行一项，例如：\n网银\nLINE",
+      blocklistHint:
+        "应用名称或窗口标题含任一关键字时：不截图、标题以“[private]”遮蔽。内置名单（密码管理器、登录页、无痕窗口…）始终生效。",
       language: "语言",
       languageAuto: "跟随系统",
       companion: "伙伴",
@@ -88,7 +98,7 @@ export default {
       proactiveUnlimited: "不限",
       petSageError: "写回宠物的 pet.json 失败——个性与频率未保存。",
       privacyNote:
-        "观察开启后，Sage 会定期读取当前窗口标题，必要时截取屏幕缩略图发送给 OpenRouter 判断“有没有值得一提的事”。截图只在内存中处理、发送后即丢弃，不会存盘；关闭观察即完全停止一切截取与上传。",
+        "观察开启后，Sage 会定期读取当前窗口标题，必要时截取屏幕缩略图发送给 OpenRouter 判断“有没有值得一提的事”。默认只截前台窗口；敏感窗口（密码管理器、登录页、无痕…）不截图、标题会遮蔽，标题中的 email、卡号、密钥也会先净化。截图只在内存中处理、发送后即丢弃，不会存盘；关闭观察即完全停止一切截取与上传。",
       cancel: "取消",
       save: "保存",
       saving: "保存中…",

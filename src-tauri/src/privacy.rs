@@ -1,0 +1,124 @@
+// Privacy guards for the observation subsystem: a sensitive-window blocklist
+// (skip screenshots, hide titles) and title sanitization (redact emails, long
+// digit runs, API tokens) applied before anything leaves the machine.
+use regex::Regex;
+use std::sync::LazyLock;
+
+/// Sentinel title returned for blocklisted windows. The frontend maps it to a
+/// localized label; the model only ever sees this placeholder.
+pub const SENSITIVE_TITLE: &str = "[private]";
+
+/// Always-on blocklist entries, matched case-insensitively as substrings of
+/// both the app name and the window title. User entries from
+/// `observe_blocklist` extend (never replace) this list.
+const BUILTIN_BLOCKLIST: &[&str] = &[
+    // Password managers / credential stores.
+    "1password",
+    "keepass",
+    "bitwarden",
+    "keychain access",
+    "lastpass",
+    "enpass",
+    // Login / private-browsing window titles.
+    "password",
+    "passphrase",
+    "login",
+    "sign in",
+    "incognito",
+    "private browsing",
+    "無痕",
+    "私密瀏覽",
+    "登入",
+    "密碼",
+];
+
+/// Whether the foreground window counts as sensitive: any builtin or user
+/// blocklist entry appearing (case-insensitively) in its app name or title.
+pub fn is_sensitive(app_name: &str, title: &str, extra: &[String]) -> bool {
+    let app = app_name.to_lowercase();
+    let title = title.to_lowercase();
+    let hit = |entry: &str| {
+        let e = entry.trim().to_lowercase();
+        !e.is_empty() && (app.contains(&e) || title.contains(&e))
+    };
+    BUILTIN_BLOCKLIST.iter().any(|e| hit(e)) || extra.iter().any(|e| hit(e))
+}
+
+static EMAIL: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}").unwrap()
+});
+/// 8+ digits, allowing single space/dash separators (card numbers, phones).
+static DIGIT_RUN: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\d(?:[ -]?\d){7,}").unwrap());
+/// API-key shapes: common prefixed tokens (sk-…, ghp_…) and JWTs (eyJ…).
+static TOKEN: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"\b(?:(?:sk|pk|ghp|gho|ghs|ghr|github_pat|xox[a-z])[-_]|eyJ)[A-Za-z0-9_./+-]{8,}")
+        .unwrap()
+});
+
+/// Redact emails, long digit runs, and token-looking strings from a window
+/// title before it is stored, broadcast, or sent to a model.
+pub fn sanitize_title(title: &str) -> String {
+    let t = EMAIL.replace_all(title, "***");
+    let t = TOKEN.replace_all(&t, "***");
+    DIGIT_RUN.replace_all(&t, "***").into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blocklist_matches_builtin_apps_case_insensitively() {
+        assert!(is_sensitive("1Password 8", "Unlock", &[]));
+        assert!(is_sensitive("KeePassXC", "database", &[]));
+        assert!(is_sensitive("Safari", "GitHub — Sign In", &[]));
+        assert!(is_sensitive("Google Chrome", "拍賣 — 登入", &[]));
+        assert!(is_sensitive("Google Chrome", "New Tab — Incognito", &[]));
+    }
+
+    #[test]
+    fn blocklist_matches_user_entries() {
+        let extra = vec!["台北富邦".to_string(), "  Slack ".to_string()];
+        assert!(is_sensitive("Google Chrome", "台北富邦銀行 — 首頁", &extra));
+        assert!(is_sensitive("Slack", "general", &extra));
+        assert!(!is_sensitive("Google Chrome", "台北天氣", &[]));
+    }
+
+    #[test]
+    fn blocklist_ignores_ordinary_windows() {
+        assert!(!is_sensitive("Visual Studio Code", "capture.rs — Sage", &[]));
+        assert!(!is_sensitive("Terminal", "zsh — 80×24", &[]));
+        // Empty user entries never match everything.
+        assert!(!is_sensitive("Finder", "Documents", &["".to_string()]));
+    }
+
+    #[test]
+    fn sanitize_redacts_emails() {
+        assert_eq!(
+            sanitize_title("Re: quote — alice.wu@example.com.tw — Mail"),
+            "Re: quote — *** — Mail"
+        );
+    }
+
+    #[test]
+    fn sanitize_redacts_long_digit_runs() {
+        assert_eq!(sanitize_title("Card 4111 1111 1111 1111 due"), "Card *** due");
+        assert_eq!(sanitize_title("Call 0912-345-678"), "Call ***");
+        // Short numbers survive (versions, line numbers).
+        assert_eq!(sanitize_title("Sage v0.3.1 — build 42"), "Sage v0.3.1 — build 42");
+    }
+
+    #[test]
+    fn sanitize_redacts_tokens() {
+        assert_eq!(sanitize_title("env: sk-or-v1-abcdef1234567890"), "env: ***");
+        assert_eq!(sanitize_title("ghp_ABCDEFGHIJKLMNOP — token"), "*** — token");
+        assert_eq!(sanitize_title("jwt eyJhbGciOiJIUzI1NiJ9.x"), "jwt ***");
+    }
+
+    #[test]
+    fn sanitize_leaves_ordinary_titles_alone() {
+        let t = "capture.rs — Sage — Visual Studio Code";
+        assert_eq!(sanitize_title(t), t);
+    }
+}

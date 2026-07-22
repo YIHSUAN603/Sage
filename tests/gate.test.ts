@@ -110,6 +110,26 @@ test("screenshot failure falls back to a title-only ask", async () => {
   assert.match(content as string, /視窗標題/);
 });
 
+test("sensitive foreground window: screenshot refused, ask degrades to title-only", async () => {
+  // sensitiveWindow makes the mock's captureScreen reject with the same
+  // message capture.rs's privacy gate uses ("sensitive window").
+  const ipc = createMockIpc({
+    settings: { observe_enabled: true },
+    sensitiveWindow: true,
+    script: [reply("在忙正事呢。")],
+  });
+  const { gate, bubbles } = createHarness(ipc);
+
+  gate.record(sample("1Password", "[private]"));
+  await gate.forceAsk();
+
+  assert.equal(bubbles.length, 1);
+  assert.equal(ipc.chatRequests.length, 1);
+  const content = ipc.chatRequests[0].messages[1].content;
+  assert.equal(typeof content, "string"); // no image part ever reached the model
+  assert.match(content as string, /視窗標題/);
+});
+
 test("stream errors and empty models stay silent", async () => {
   const errorIpc = createMockIpc({
     settings: { observe_enabled: true },

@@ -75,6 +75,16 @@ export default {
       observeEnable: "Enable observation (off by default)",
       interval: "Interval",
       seconds: "s",
+      captureMode: "Capture area",
+      captureModeWindow: "Focused window only (recommended)",
+      captureModeScreen: "Entire screen",
+      denyDataCollection: "Zero-retention providers only",
+      denyDataCollectionHint:
+        "Observation requests ask OpenRouter to route only to providers that don't retain or train on inputs. Some free models may then be unable to take screenshots; observation falls back to titles only.",
+      blocklist: "Sensitive-window blocklist",
+      blocklistPlaceholder: "One entry per line, e.g.\nmy bank\nLINE",
+      blocklistHint:
+        "When the app name or window title contains any entry: no screenshot, and the title is masked as \"[private]\". The built-in list (password managers, login pages, private browsing…) always applies.",
       language: "Language",
       languageAuto: "Follow system",
       companion: "Companion",
@@ -97,7 +107,7 @@ export default {
       petSageError:
         "Failed to write the pet's pet.json — personality and cadence were not saved.",
       privacyNote:
-        "When observation is on, Sage periodically reads the current window title and, when needed, sends a screen thumbnail to OpenRouter to decide whether anything is worth mentioning. Screenshots are processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all capture and upload entirely.",
+        "When observation is on, Sage periodically reads the current window title and, when needed, sends a screen thumbnail to OpenRouter to decide whether anything is worth mentioning. By default only the focused window is captured; sensitive windows (password managers, login pages, private browsing…) are never photographed and their titles are masked, and emails, card numbers, and keys are redacted from titles. Screenshots are processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all capture and upload entirely.",
       cancel: "Cancel",
       save: "Save",
       saving: "Saving…",

@@ -37,6 +37,18 @@ pub struct Settings {
     /// Seconds between active-window polls when observing.
     #[serde(default = "default_interval")]
     pub observe_interval: u32,
+    /// User-added sensitive-window entries (app names / title keywords),
+    /// case-insensitive substrings. Extends privacy.rs's built-in blocklist.
+    #[serde(default)]
+    pub observe_blocklist: Vec<String>,
+    /// What capture_screen grabs: "window" (focused window only, default —
+    /// background windows never enter the frame) or "screen" (full monitor).
+    #[serde(default = "default_capture_mode")]
+    pub observe_capture_mode: String,
+    /// Route observation requests only to OpenRouter providers that don't
+    /// retain/train on inputs (provider.data_collection = "deny").
+    #[serde(default = "default_true")]
+    pub observe_deny_data_collection: bool,
     /// Optional OpenRouter ranking header.
     #[serde(default)]
     pub referer: String,
@@ -68,6 +80,14 @@ fn default_interval() -> u32 {
     8
 }
 
+fn default_capture_mode() -> String {
+    "window".into()
+}
+
+fn default_true() -> bool {
+    true
+}
+
 fn default_backend() -> String {
     "openrouter".into()
 }
@@ -97,6 +117,9 @@ impl Default for Settings {
             observe_model: String::new(),
             observe_enabled: false,
             observe_interval: default_interval(),
+            observe_blocklist: Vec::new(),
+            observe_capture_mode: default_capture_mode(),
+            observe_deny_data_collection: true,
             referer: "https://github.com/sage".into(),
             language: default_language(),
             active_pet: String::new(),

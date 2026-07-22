@@ -37,6 +37,25 @@ export interface Settings {
   observe_enabled: boolean;
   /** Seconds between active-window polls when observing. */
   observe_interval: number;
+  /**
+   * User-added sensitive-window entries (app names / title keywords),
+   * case-insensitive substrings. Extends the built-in blocklist in
+   * src-tauri/src/privacy.rs — blocklisted windows are never screenshotted
+   * and their titles are masked.
+   */
+  observe_blocklist: string[];
+  /**
+   * What capture_screen grabs: "window" (focused window only, default —
+   * background windows never enter the frame) or "screen" (full monitor).
+   */
+  observe_capture_mode: "window" | "screen";
+  /**
+   * Route observation requests only to OpenRouter providers that don't
+   * retain/train on inputs (provider.data_collection = "deny"). May leave
+   * some free models without an eligible provider; observation then falls
+   * back to title-only.
+   */
+  observe_deny_data_collection: boolean;
   /** Optional OpenRouter ranking header. */
   referer: string;
   /** UI + assistant language: "auto" (follow system) or zh-TW / en / zh-CN / ja. */
@@ -63,6 +82,9 @@ export const DEFAULT_SETTINGS: Settings = {
   observe_model: "",
   observe_enabled: false,
   observe_interval: 8,
+  observe_blocklist: [],
+  observe_capture_mode: "window",
+  observe_deny_data_collection: true,
   referer: "https://github.com/sage",
   language: "auto",
   active_pet: "",
@@ -123,6 +145,12 @@ export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   tools?: ToolDef[];
+  /**
+   * "deny" ⇒ Rust adds provider.data_collection = "deny" to the OpenRouter
+   * body (only zero-retention providers may serve the request). Set by the
+   * observation path when observe_deny_data_collection is on.
+   */
+  data_policy?: "deny";
 }
 
 // ---------------------------------------------------------------------------

@@ -53,6 +53,14 @@ function parseCooldown(raw: string): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/** One blocklist entry per line; blanks dropped, whitespace trimmed. */
+function parseBlocklist(raw: string): string[] {
+  return raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 /** "" or invalid ⇒ undefined (inherit); 0 is kept — it means explicitly unlimited. */
 function parseMaxPerHour(raw: string): number | undefined {
   const t = raw.trim();
@@ -171,11 +179,15 @@ export function SettingsDialog({
   } | null>(null);
   // Whether the model dropdown is in "Custom…" mode (free-text id, not a preset).
   const [customModel, setCustomModel] = useState(false);
+  // Raw textarea text for observe_blocklist (one entry per line); parsed into
+  // the draft on every change so typing (blank lines, spaces) isn't disturbed.
+  const [blocklistText, setBlocklistText] = useState("");
 
   useEffect(() => {
     if (!open) return;
     const current = useSettingsStore.getState().settings;
     setDraft(current);
+    setBlocklistText(current.observe_blocklist.join("\n"));
     setCustomModel(!isModelPreset(current.agent_cli, current.agent_cli_model));
     setModelsError(false);
     let cancelled = false;
@@ -651,6 +663,55 @@ export function SettingsDialog({
             <span>{t("settings.seconds")}</span>
           </label>
         </div>
+
+        <label className="field">
+          <span>{t("settings.captureMode")}</span>
+          <select
+            value={draft.observe_capture_mode}
+            disabled={!draft.observe_enabled}
+            onChange={(e) =>
+              patch({
+                observe_capture_mode: e.currentTarget
+                  .value as Settings["observe_capture_mode"],
+              })
+            }
+          >
+            <option value="window">{t("settings.captureModeWindow")}</option>
+            <option value="screen">{t("settings.captureModeScreen")}</option>
+          </select>
+        </label>
+
+        {!useAgentCli && (
+          <div className="field">
+            <label className="switch-label">
+              <input
+                type="checkbox"
+                checked={draft.observe_deny_data_collection}
+                disabled={!draft.observe_enabled}
+                onChange={(e) =>
+                  patch({ observe_deny_data_collection: e.currentTarget.checked })
+                }
+              />
+              <span>{t("settings.denyDataCollection")}</span>
+            </label>
+            <span className="field-hint">{t("settings.denyDataCollectionHint")}</span>
+          </div>
+        )}
+
+        <label className="field">
+          <span>{t("settings.blocklist")}</span>
+          <textarea
+            rows={3}
+            value={blocklistText}
+            disabled={!draft.observe_enabled}
+            placeholder={t("settings.blocklistPlaceholder")}
+            onChange={(e) => {
+              setBlocklistText(e.currentTarget.value);
+              patch({ observe_blocklist: parseBlocklist(e.currentTarget.value) });
+            }}
+          />
+          <span className="field-hint">{t("settings.blocklistHint")}</span>
+        </label>
 
         <UpdateSection />
 

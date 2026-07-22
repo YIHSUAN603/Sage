@@ -3616,6 +3616,7 @@ dependencies = [
  "base64 0.22.1",
  "futures-util",
  "image 0.25.10",
+ "regex",
  "reqwest 0.12.28",
  "serde",
  "serde_json",

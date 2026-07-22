@@ -36,6 +36,11 @@ export interface MockIpcOptions {
   windows?: (ActiveWindow | null)[];
   /** Data URL returned by captureScreen. */
   screenshot?: string;
+  /**
+   * Simulate a blocklisted foreground window: captureScreen rejects with the
+   * same message capture.rs uses ("sensitive window").
+   */
+  sensitiveWindow?: boolean;
 }
 
 /** A skill as the mock stores it: contract SkillMeta plus its SKILL.md body. */
@@ -239,6 +244,10 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       // Mirrors capture.rs: refuse outright when observation is off.
       if (!settings.observe_enabled) {
         throw new Error("observation disabled");
+      }
+      // Mirrors capture.rs's privacy gate for a blocklisted foreground window.
+      if (options.sensitiveWindow) {
+        throw new Error("sensitive window");
       }
       return screenshot;
     },

@@ -32,4 +32,5 @@ xcap = "0.4"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.22"
 active-win-pos-rs = "0.8"
+regex = "1"
 

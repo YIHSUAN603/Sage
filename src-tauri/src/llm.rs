@@ -20,6 +20,12 @@ pub struct ChatRequest {
     pub messages: Vec<ChatMessage>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDef>>,
+    /// "deny" ⇒ the OpenRouter body gets provider.data_collection = "deny"
+    /// (observation requests carry screenshots; only zero-retention providers
+    /// may serve them). Stripped from the body before sending — OpenRouter
+    /// never sees this field itself.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_policy: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -191,6 +197,13 @@ pub async fn chat_stream(
         }
     };
     body["stream"] = serde_json::Value::Bool(true);
+
+    let data_policy = body
+        .as_object_mut()
+        .and_then(|o| o.remove("data_policy"));
+    if data_policy.as_ref().and_then(|v| v.as_str()) == Some("deny") {
+        body["provider"] = serde_json::json!({ "data_collection": "deny" });
+    }
 
     let client = reqwest::Client::new();
     let mut request = client

@@ -52,6 +52,10 @@ The architecture follows one rule: **Rust provides capabilities, the frontend or
 Observation is a hard opt-in, not a default:
 
 - Observation is **off by default** and must be explicitly enabled in Settings; it can be paused at any time.
+- By default only the **focused window** is captured — background windows (messages, banking tabs…) never enter the frame. Full-screen capture is an explicit opt-in.
+- A **sensitive-window blocklist** (password managers, login pages, private-browsing windows, plus your own entries) is enforced in Rust: blocklisted windows are never screenshotted and their titles are masked before anything leaves the machine.
+- Window titles are **sanitized** before use — emails, long digit runs (card/phone numbers), and API-key-shaped tokens are redacted.
+- Observation requests ask OpenRouter to route only to **zero-retention providers** (`data_collection: "deny"`, on by default). Note that free models' data policies are otherwise up to each provider; with deny on, a model without an eligible provider falls back to title-only observation.
 - Screenshots are processed **in memory only** — downscaled, sent to the vision model, then discarded. Nothing is written to disk.
 - With observation off, no capture or upload of any kind happens.
 - Screen capture on macOS requires the Screen Recording permission (TCC); if denied, Sage falls back to window-title-only mode.
@@ -160,6 +164,32 @@ src-tauri/
 
 - **macOS private API** — `macOSPrivateApi` is enabled in `tauri.conf.json` to support the transparent, borderless windows.
 - **exFAT volumes** — if the repo lives on an exFAT drive, macOS creates AppleDouble (`._*`) files that break the Tauri build. The `predev`/`prebuild` hooks clean them automatically (`npm run clean:appledouble`).
+
+## Roadmap
+
+Directional, not a promise — issues and PRs against any of it are welcome.
+
+### 0.4 — Memory & persistence
+
+Today Sage forgets everything on restart, which no companion should. This release extends the config-dir philosophy already used by `skills/` and `pets/`: **the config dir becomes Sage's brain**, and every piece of it stays a plain local file you can read, edit, or delete.
+
+- **Conversation persistence** — Sage keeps one continuous conversation (a companion has an ongoing relationship, not a chat-app session list) that survives restarts. "Clear" archives the conversation to `<app config dir>/sessions/` instead of destroying it; archives are browsable and deletable from Settings.
+- **Long-term memory** — one markdown file per memory under `<app config dir>/memory/`, with the same frontmatter format as skills (`name` + `description`, body = the fact). A lightweight index (one line per memory) is injected into each request; full memories load on demand via a `recall_memory` tool — the same catalog-plus-lazy-load pattern as `use_skill`. The model manages its own memory through `save_memory` / `recall_memory` / `forget_memory` (exact-name match), and Settings gets a memory manager with per-item edit/delete plus one-click delete-all.
+- **Bounded context** — long histories are tail-truncated to a budget before each request; only the memory index (never every body) rides along by default.
+- Memory is on by default: the files never leave your machine, and memory content reaches your chosen LLM over the exact same path chat content already does. Turn it off in Settings if you'd rather Sage stay goldfish-brained.
+- Memory tools wire into the OpenRouter backend first; the agent-CLI backend gets read-only memory injection to start.
+
+### 0.5 — MCP & tools
+
+An MCP client, so Sage plugs into the existing tool ecosystem instead of growing bespoke tools one by one — built on the tool-permission tiers that already exist. Combined with the agent-CLI backend, Sage moves from "a character that chats" toward "a desktop agent that can offer to do the thing it just watched you get stuck on."
+
+### 0.6 — Local model backend
+
+An Ollama backend so observation screenshots never leave the machine, completing the privacy story and removing the free-tier quota anxiety.
+
+### 1.0 — Signing & ecosystem
+
+macOS code signing + notarization (no more quarantine workarounds), a companion-sharing gallery, and general polish so non-technical users can install without friction.
 
 ## License
 

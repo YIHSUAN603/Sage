@@ -2,7 +2,7 @@
 // builds the messages (system + recent-activity text + optional inline
 // screenshot); this decides how to get a reply out of them. Settings are read at
 // call time via `getSettings`, so switching backend takes effect on the next ask.
-import type { ChatMessage, SageIpc, Settings } from "../ipc/contract.ts";
+import type { ChatMessage, ChatRequest, SageIpc, Settings } from "../ipc/contract.ts";
 import { createDeltaAccumulator } from "../llm/openrouter.ts";
 
 export type RunObserve = (
@@ -20,7 +20,7 @@ export function createRunObserve(
       return observeViaAgentCli(ipc, s.agent_cli, s.agent_cli_model, messages, debug);
     }
     const model = (s.observe_model.trim() || s.chat_model).trim();
-    return observeViaOpenRouter(ipc, model, messages, debug);
+    return observeViaOpenRouter(ipc, model, messages, s.observe_deny_data_collection, debug);
   };
 }
 
@@ -28,25 +28,60 @@ async function observeViaOpenRouter(
   ipc: SageIpc,
   model: string,
   messages: ChatMessage[],
+  deny: boolean,
   debug: (m: string) => void,
 ): Promise<string | null> {
   if (!model) {
     debug("沒有可用的模型（觀察/聊天模型都未設定）");
     return null; // nothing configured — never burn an error on the user
   }
-  const acc = createDeltaAccumulator();
+
+  const attempt = async (msgs: ChatMessage[]) => {
+    const req: ChatRequest = { model, messages: msgs };
+    if (deny) req.data_policy = "deny";
+    const acc = createDeltaAccumulator();
+    await ipc.chatStream(req, (event) => acc.push(event));
+    return acc.finish();
+  };
+
+  let finished;
   try {
-    await ipc.chatStream({ model, messages }, (event) => acc.push(event));
+    finished = await attempt(messages);
   } catch (err) {
     debug(`chat_stream 呼叫失敗：${message(err)}`);
     return null;
   }
-  const { message: reply, error } = acc.finish();
+
+  // data_collection: deny can leave a free vision model with no eligible
+  // provider (OpenRouter 404). Retry once title-only — the deny policy stays;
+  // it's the screenshot we drop, never the privacy requirement.
+  if (finished.error && deny && hasImages(messages) && isProviderError(finished.error)) {
+    debug("零保留 provider 無法服務圖片請求，剝除截圖改用純文字重試");
+    try {
+      finished = await attempt(stripImages(messages));
+    } catch (err) {
+      debug(`chat_stream 重試失敗：${message(err)}`);
+      return null;
+    }
+  }
+
+  const { message: reply, error } = finished;
   if (error) {
     debug(`串流回報錯誤：${error.kind}${error.status ? ` (${error.status})` : ""} — ${error.message}`);
     return null;
   }
   return typeof reply.content === "string" ? reply.content : "";
+}
+
+/** OpenRouter's "no allowed providers" rejection (404 or a provider-y message). */
+function isProviderError(error: { status?: number; message: string }): boolean {
+  return error.status === 404 || /provider/i.test(error.message);
+}
+
+function hasImages(messages: ChatMessage[]): boolean {
+  return messages.some(
+    (m) => Array.isArray(m.content) && m.content.some((p) => p.type === "image_url"),
+  );
 }
 
 async function observeViaAgentCli(

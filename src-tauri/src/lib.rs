@@ -3,6 +3,7 @@ mod capture;
 mod context;
 mod llm;
 mod pets;
+mod privacy;
 mod settings;
 mod shell_path;
 mod skills;
