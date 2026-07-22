@@ -61,14 +61,31 @@ Observation is a hard opt-in, not a default:
 
 ### macOS (Homebrew, recommended)
 
-```sh
-brew install --cask --no-quarantine YIHSUAN603/tap/sage
-```
+1. **Install [Homebrew](https://brew.sh/)** if you don't have it yet:
 
-- Use the full name `YIHSUAN603/tap/sage` — the official Homebrew repo has an unrelated `sage` cask (SageMath).
-- `--no-quarantine` is needed because macOS builds are unsigned; without it Gatekeeper reports the app as "damaged".
+   ```sh
+   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+   ```
+
+   Check with `brew --version` if you're not sure whether it's already installed.
+
+2. **Install Sage:**
+
+   ```sh
+   brew install --cask --no-quarantine YIHSUAN603/tap/sage
+   ```
+
+   - Use the full name `YIHSUAN603/tap/sage` — the official Homebrew repo has an unrelated `sage` cask (SageMath).
+   - `--no-quarantine` is needed because macOS builds are unsigned; without it Gatekeeper reports the app as "damaged".
+
+3. **Launch it** — the app is installed to `/Applications/sage.app`; open it from Launchpad/Spotlight, or:
+
+   ```sh
+   open /Applications/sage.app
+   ```
 
 To upgrade later: `brew upgrade --cask sage` (or use the in-app updater).
+To uninstall: `brew uninstall --cask sage`.
 
 ### Manual download
 
