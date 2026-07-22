@@ -271,6 +271,12 @@ export function SettingsDialog({
   const useAgentCli = draft.backend === "agent_cli";
   const patch = (p: Partial<Settings>) => setDraft((d) => ({ ...d, ...p }));
 
+  // When a pet is active, its pet.json overrides the global cadence
+  // (see proactiveTuning), so the single proactive control below edits the
+  // pet's values (written back on submit) instead of the settings defaults.
+  const petCadence =
+    petSage && petSage.id === draft.active_pet.trim() ? petSage : null;
+
   // Pick a pet folder, copy it into <config>/pets/, then select it. The
   // avatar swaps once the draft is saved (settings broadcast reloads it).
   const importPet = async () => {
@@ -376,75 +382,26 @@ export function SettingsDialog({
           </label>
         ) : (
           petSage && (
-            <>
-              <label className="field">
-                <span>{t("settings.persona")}</span>
-                <textarea
-                  rows={3}
-                  value={petSage.persona}
-                  placeholder={t("persona.synthBase", {
-                    ns: "prompt",
-                    name: petSage.displayName,
-                  })}
-                  onChange={(e) =>
-                    setPetSage({ ...petSage, persona: e.currentTarget.value, dirty: true })
-                  }
-                />
-                <span className="field-hint">{t("settings.personaPetHint")}</span>
-              </label>
-              <div className="field">
-                <div className="field field-row">
-                  <label className="interval-label">
-                    <span>{t("settings.proactiveCooldown")}</span>
-                    <input
-                      type="number"
-                      min={0.5}
-                      step={0.5}
-                      value={petSage.cooldown}
-                      placeholder={String(draft.proactive_cooldown_minutes)}
-                      onChange={(e) =>
-                        setPetSage({ ...petSage, cooldown: e.currentTarget.value, dirty: true })
-                      }
-                    />
-                  </label>
-                  <label className="interval-label">
-                    <span>{t("settings.proactiveMaxPerHour")}</span>
-                    <input
-                      type="number"
-                      min={0}
-                      step={1}
-                      value={petSage.maxPerHour}
-                      placeholder={
-                        draft.proactive_max_per_hour === 0
-                          ? t("settings.proactiveUnlimited")
-                          : String(draft.proactive_max_per_hour)
-                      }
-                      onChange={(e) =>
-                        setPetSage({
-                          ...petSage,
-                          maxPerHour: e.currentTarget.value,
-                          dirty: true,
-                        })
-                      }
-                    />
-                  </label>
-                </div>
-                <span className="field-hint">
-                  {t("settings.proactivePetHint", {
-                    cooldown: draft.proactive_cooldown_minutes,
-                    max:
-                      draft.proactive_max_per_hour === 0
-                        ? t("settings.proactiveUnlimited")
-                        : draft.proactive_max_per_hour,
-                  })}
+            <label className="field">
+              <span>{t("settings.persona")}</span>
+              <textarea
+                rows={3}
+                value={petSage.persona}
+                placeholder={t("persona.synthBase", {
+                  ns: "prompt",
+                  name: petSage.displayName,
+                })}
+                onChange={(e) =>
+                  setPetSage({ ...petSage, persona: e.currentTarget.value, dirty: true })
+                }
+              />
+              <span className="field-hint">{t("settings.personaPetHint")}</span>
+              {petSageError && (
+                <span className="field-hint field-hint-error">
+                  {t("settings.petSageError")}
                 </span>
-                {petSageError && (
-                  <span className="field-hint field-hint-error">
-                    {t("settings.petSageError")}
-                  </span>
-                )}
-              </div>
-            </>
+              )}
+            </label>
           )
         )}
 
@@ -606,16 +563,23 @@ export function SettingsDialog({
                 type="number"
                 min={0.5}
                 step={0.5}
-                value={draft.proactive_cooldown_minutes}
-                disabled={!draft.proactive_enabled}
-                onChange={(e) =>
-                  patch({
-                    proactive_cooldown_minutes: Math.max(
-                      0.5,
-                      Number(e.currentTarget.value) || 0,
-                    ),
-                  })
+                value={petCadence ? petCadence.cooldown : draft.proactive_cooldown_minutes}
+                placeholder={
+                  petCadence ? String(draft.proactive_cooldown_minutes) : undefined
                 }
+                disabled={!draft.proactive_enabled}
+                onChange={(e) => {
+                  if (petCadence) {
+                    setPetSage({ ...petCadence, cooldown: e.currentTarget.value, dirty: true });
+                  } else {
+                    patch({
+                      proactive_cooldown_minutes: Math.max(
+                        0.5,
+                        Number(e.currentTarget.value) || 0,
+                      ),
+                    });
+                  }
+                }}
               />
             </label>
             <label className="interval-label">
@@ -624,20 +588,45 @@ export function SettingsDialog({
                 type="number"
                 min={0}
                 step={1}
-                value={draft.proactive_max_per_hour}
-                disabled={!draft.proactive_enabled}
-                onChange={(e) =>
-                  patch({
-                    proactive_max_per_hour: Math.max(
-                      0,
-                      Math.floor(Number(e.currentTarget.value) || 0),
-                    ),
-                  })
+                value={petCadence ? petCadence.maxPerHour : draft.proactive_max_per_hour}
+                placeholder={
+                  petCadence
+                    ? draft.proactive_max_per_hour === 0
+                      ? t("settings.proactiveUnlimited")
+                      : String(draft.proactive_max_per_hour)
+                    : undefined
                 }
+                disabled={!draft.proactive_enabled}
+                onChange={(e) => {
+                  if (petCadence) {
+                    setPetSage({
+                      ...petCadence,
+                      maxPerHour: e.currentTarget.value,
+                      dirty: true,
+                    });
+                  } else {
+                    patch({
+                      proactive_max_per_hour: Math.max(
+                        0,
+                        Math.floor(Number(e.currentTarget.value) || 0),
+                      ),
+                    });
+                  }
+                }}
               />
             </label>
           </div>
-          <span className="field-hint">{t("settings.proactiveHint")}</span>
+          <span className="field-hint">
+            {petCadence
+              ? t("settings.proactivePetHint", {
+                  cooldown: draft.proactive_cooldown_minutes,
+                  max:
+                    draft.proactive_max_per_hour === 0
+                      ? t("settings.proactiveUnlimited")
+                      : draft.proactive_max_per_hour,
+                })
+              : t("settings.proactiveHint")}
+          </span>
         </div>
 
         <div className="sub-fields">
