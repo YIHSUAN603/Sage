@@ -417,6 +417,16 @@
   gap: 8px;
 }
 
+/* Nested option group (e.g. observation under the proactive-chatter switch). */
+.sub-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-left: 10px;
+  padding-left: 12px;
+  border-left: 2px solid var(--bubble-border);
+}
+
 .switch-label,
 .interval-label {
   display: flex;

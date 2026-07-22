@@ -364,57 +364,16 @@ export function SettingsDialog({
         </label>
 
         {draft.active_pet.trim() === "" ? (
-          <>
-            <label className="field">
-              <span>{t("settings.persona")}</span>
-              <textarea
-                rows={3}
-                value={draft.custom_persona}
-                placeholder={t("persona.default", { ns: "prompt" })}
-                onChange={(e) => patch({ custom_persona: e.currentTarget.value })}
-              />
-              <span className="field-hint">{t("settings.personaBuiltinHint")}</span>
-            </label>
-            <div className="field">
-              <div className="field field-row">
-                <label className="interval-label">
-                  <span>{t("settings.proactiveCooldown")}</span>
-                  <input
-                    type="number"
-                    min={0.5}
-                    step={0.5}
-                    value={draft.proactive_cooldown_minutes}
-                    onChange={(e) =>
-                      patch({
-                        proactive_cooldown_minutes: Math.max(
-                          0.5,
-                          Number(e.currentTarget.value) || 0,
-                        ),
-                      })
-                    }
-                  />
-                </label>
-                <label className="interval-label">
-                  <span>{t("settings.proactiveMaxPerHour")}</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={draft.proactive_max_per_hour}
-                    onChange={(e) =>
-                      patch({
-                        proactive_max_per_hour: Math.max(
-                          0,
-                          Math.floor(Number(e.currentTarget.value) || 0),
-                        ),
-                      })
-                    }
-                  />
-                </label>
-              </div>
-              <span className="field-hint">{t("settings.proactiveBuiltinHint")}</span>
-            </div>
-          </>
+          <label className="field">
+            <span>{t("settings.persona")}</span>
+            <textarea
+              rows={3}
+              value={draft.custom_persona}
+              placeholder={t("persona.default", { ns: "prompt" })}
+              onChange={(e) => patch({ custom_persona: e.currentTarget.value })}
+            />
+            <span className="field-hint">{t("settings.personaBuiltinHint")}</span>
+          </label>
         ) : (
           petSage && (
             <>
@@ -629,84 +588,127 @@ export function SettingsDialog({
           </>
         )}
 
-        <div className="field field-row">
-          <label className="switch-label">
-            <input
-              type="checkbox"
-              checked={draft.observe_enabled}
-              onChange={(e) =>
-                patch({ observe_enabled: e.currentTarget.checked })
-              }
-            />
-            <span>{t("settings.observeEnable")}</span>
-          </label>
-          <label className="interval-label">
-            <span>{t("settings.interval")}</span>
-            <input
-              type="number"
-              min={2}
-              max={600}
-              value={draft.observe_interval}
-              disabled={!draft.observe_enabled}
-              onChange={(e) =>
-                patch({
-                  observe_interval: Math.max(
-                    2,
-                    Math.floor(Number(e.currentTarget.value) || 0),
-                  ),
-                })
-              }
-            />
-            <span>{t("settings.seconds")}</span>
-          </label>
-        </div>
-        <span className="field-hint">{t("settings.axPermissionHint")}</span>
-
         <div className="field">
-          <label className="switch-label">
-            <input
-              type="checkbox"
-              checked={draft.idle_chatter_enabled}
-              onChange={(e) =>
-                patch({ idle_chatter_enabled: e.currentTarget.checked })
-              }
-            />
-            <span>{t("settings.idleChatter")}</span>
-          </label>
-          <span className="field-hint">{t("settings.idleChatterHint")}</span>
-        </div>
-
-        {!useAgentCli && (
-          <div className="field">
+          <div className="field field-row">
             <label className="switch-label">
               <input
                 type="checkbox"
-                checked={draft.observe_deny_data_collection}
-                disabled={!draft.observe_enabled}
+                checked={draft.proactive_enabled}
                 onChange={(e) =>
-                  patch({ observe_deny_data_collection: e.currentTarget.checked })
+                  patch({ proactive_enabled: e.currentTarget.checked })
                 }
               />
-              <span>{t("settings.denyDataCollection")}</span>
+              <span>{t("settings.proactiveEnable")}</span>
             </label>
-            <span className="field-hint">{t("settings.denyDataCollectionHint")}</span>
+            <label className="interval-label">
+              <span>{t("settings.proactiveCooldown")}</span>
+              <input
+                type="number"
+                min={0.5}
+                step={0.5}
+                value={draft.proactive_cooldown_minutes}
+                disabled={!draft.proactive_enabled}
+                onChange={(e) =>
+                  patch({
+                    proactive_cooldown_minutes: Math.max(
+                      0.5,
+                      Number(e.currentTarget.value) || 0,
+                    ),
+                  })
+                }
+              />
+            </label>
+            <label className="interval-label">
+              <span>{t("settings.proactiveMaxPerHour")}</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={draft.proactive_max_per_hour}
+                disabled={!draft.proactive_enabled}
+                onChange={(e) =>
+                  patch({
+                    proactive_max_per_hour: Math.max(
+                      0,
+                      Math.floor(Number(e.currentTarget.value) || 0),
+                    ),
+                  })
+                }
+              />
+            </label>
           </div>
-        )}
+          <span className="field-hint">{t("settings.proactiveHint")}</span>
+        </div>
 
-        <label className="field">
-          <span>{t("settings.blocklist")}</span>
-          <textarea
-            rows={3}
-            value={blocklistText}
-            disabled={!draft.observe_enabled}
-            placeholder={t("settings.blocklistPlaceholder")}
-            onChange={(e) => {
-              setBlocklistText(e.currentTarget.value);
-              patch({ observe_blocklist: parseBlocklist(e.currentTarget.value) });
-            }}
-          />
-          <span className="field-hint">{t("settings.blocklistHint")}</span>
-        </label>
+        <div className="sub-fields">
+          <div className="field">
+            <div className="field field-row">
+              <label className="switch-label">
+                <input
+                  type="checkbox"
+                  checked={draft.observe_enabled}
+                  onChange={(e) =>
+                    patch({ observe_enabled: e.currentTarget.checked })
+                  }
+                />
+                <span>{t("settings.observeEnable")}</span>
+              </label>
+              <label className="interval-label">
+                <span>{t("settings.interval")}</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={600}
+                  value={draft.observe_interval}
+                  disabled={!draft.observe_enabled}
+                  onChange={(e) =>
+                    patch({
+                      observe_interval: Math.max(
+                        2,
+                        Math.floor(Number(e.currentTarget.value) || 0),
+                      ),
+                    })
+                  }
+                />
+                <span>{t("settings.seconds")}</span>
+              </label>
+            </div>
+            <span className="field-hint">{t("settings.observeHint")}</span>
+            <span className="field-hint">{t("settings.axPermissionHint")}</span>
+          </div>
+
+          {!useAgentCli && (
+            <div className="field">
+              <label className="switch-label">
+                <input
+                  type="checkbox"
+                  checked={draft.observe_deny_data_collection}
+                  disabled={!draft.observe_enabled}
+                  onChange={(e) =>
+                    patch({ observe_deny_data_collection: e.currentTarget.checked })
+                  }
+                />
+                <span>{t("settings.denyDataCollection")}</span>
+              </label>
+              <span className="field-hint">{t("settings.denyDataCollectionHint")}</span>
+            </div>
+          )}
+
+          <label className="field">
+            <span>{t("settings.blocklist")}</span>
+            <textarea
+              rows={3}
+              value={blocklistText}
+              disabled={!draft.observe_enabled}
+              placeholder={t("settings.blocklistPlaceholder")}
+              onChange={(e) => {
+                setBlocklistText(e.currentTarget.value);
+                patch({ observe_blocklist: parseBlocklist(e.currentTarget.value) });
+              }}
+            />
+            <span className="field-hint">{t("settings.blocklistHint")}</span>
+          </label>
+        </div>
 
         <UpdateSection />
 

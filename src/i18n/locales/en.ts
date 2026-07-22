@@ -71,12 +71,14 @@ export default {
       recommended: " (recommended: can double as the chat model)",
       observeModel: "Observe model",
       observeModelPlaceholder: "May be the same as the chat model",
-      observeEnable: "Enable observation (off by default)",
+      proactiveEnable: "Proactive chatter",
+      proactiveHint:
+        "Your companion pipes up now and then to chat and cheer you on: the interval is the minimum gap in minutes; 0 for the cap = unlimited.",
+      observeEnable: "Reference the screen (observation, off by default)",
+      observeHint:
+        "When on, chatter references the current window's title and on-screen text; even with proactive chatter off, chats still carry your recent window context. When off, nothing on screen or about windows is ever captured.",
       axPermissionHint:
         "On macOS, grant Sage Accessibility permission (System Settings → Privacy & Security → Accessibility) so it can read on-screen text; without it, observation automatically falls back to window titles.",
-      idleChatter: "Chat even when observation is off",
-      idleChatterHint:
-        "With observation off, your companion still pipes up on the chatter cadence — without capturing the screen or window info at all.",
       interval: "Interval",
       seconds: "s",
       denyDataCollection: "Zero-retention providers only",
@@ -98,17 +100,15 @@ export default {
       personaBuiltinHint: "Leave empty to use the built-in persona.",
       personaPetHint:
         "Leave empty to synthesize one from the pet's name and description. Changes are written back to this pet's pet.json.",
-      proactiveCooldown: "Chatter interval (minutes)",
+      proactiveCooldown: "Interval (minutes)",
       proactiveMaxPerHour: "Max per hour",
-      proactiveBuiltinHint:
-        "Proactive chatter cadence: the interval is the minimum gap in minutes; 0 for the cap = unlimited.",
       proactivePetHint:
         "Leave empty to inherit the global settings ({{cooldown}} min, {{max}} per hour).",
       proactiveUnlimited: "unlimited",
       petSageError:
         "Failed to write the pet's pet.json — personality and cadence were not saved.",
       privacyNote:
-        "When observation is on, Sage periodically reads the current window's title and on-screen text (via the system accessibility API) — it never captures screen images. Sensitive windows (password managers, login pages, private browsing…) never have their content read and their titles are masked, with emails, card numbers, and keys redacted from titles. Content is processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all reading and upload entirely.",
+        "When observation is on, Sage periodically reads the current window's title and on-screen text (via the system accessibility API) — it never captures screen images. Sensitive windows (password managers, login pages, private browsing…) never have their content read and their titles are masked, with emails, card numbers, and keys redacted from titles. Content is processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all reading and upload entirely. With observation on but proactive chatter off, what's observed is only used as context when you start a chat yourself.",
       cancel: "Cancel",
       save: "Save",
       saving: "Saving…",

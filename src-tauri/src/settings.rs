@@ -31,13 +31,15 @@ pub struct Settings {
     /// Model used for observation (text-only prompts). May equal chat_model.
     #[serde(default)]
     pub observe_model: String,
-    /// Master switch for the observation subsystem. Off by default (privacy).
+    /// Master switch for the observation subsystem (window sampling, semantic
+    /// snapshots, chat context injection). Off by default (privacy).
     #[serde(default)]
     pub observe_enabled: bool,
-    /// Proactive chatter while observation is off: the companion still speaks
-    /// on the proactive cadence but sees nothing (no capture of any kind).
+    /// Master switch for proactive bubbles. Independent of observation:
+    /// with observation on it chats about what it sees, off it just chats
+    /// blind; observation on + this off = silent context-only sampling.
     #[serde(default = "default_true")]
-    pub idle_chatter_enabled: bool,
+    pub proactive_enabled: bool,
     /// Seconds between active-window polls when observing.
     #[serde(default = "default_interval")]
     pub observe_interval: u32,
@@ -112,7 +114,7 @@ impl Default for Settings {
             chat_model: String::new(),
             observe_model: String::new(),
             observe_enabled: false,
-            idle_chatter_enabled: true,
+            proactive_enabled: true,
             observe_interval: default_interval(),
             observe_blocklist: Vec::new(),
             observe_deny_data_collection: true,
@@ -135,17 +137,84 @@ fn settings_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("settings.json"))
 }
 
+/// Parse a settings file, migrating pre-`proactive_enabled` files: those had
+/// `idle_chatter_enabled` (chatter while observation was off) and observation
+/// that always chattered — so the equivalent master switch is
+/// `observe_enabled || idle_chatter_enabled`. The legacy key is simply
+/// ignored afterwards and disappears on the next save.
+fn parse(json: &str) -> Option<Settings> {
+    let mut value: serde_json::Value = serde_json::from_str(json).ok()?;
+    let obj = value.as_object_mut()?;
+    if !obj.contains_key("proactive_enabled") {
+        let observe = obj
+            .get("observe_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let chatter = obj
+            .get("idle_chatter_enabled")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        obj.insert("proactive_enabled".into(), (observe || chatter).into());
+    }
+    serde_json::from_value(value).ok()
+}
+
 pub fn load(app: &tauri::AppHandle) -> Settings {
     settings_path(app)
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|s| serde_json::from_str(&s).ok())
+        .and_then(|s| parse(&s))
         .unwrap_or_default()
 }
 
 #[tauri::command]
 pub fn get_settings(app: tauri::AppHandle) -> Settings {
     load(&app)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    fn flags(json: &str) -> (bool, bool) {
+        let s = parse(json).expect("parse settings");
+        (s.observe_enabled, s.proactive_enabled)
+    }
+
+    #[test]
+    fn migrates_legacy_flag_combinations() {
+        // Legacy observe=on always chattered ⇒ proactive stays on either way.
+        assert_eq!(
+            flags(r#"{"observe_enabled":true,"idle_chatter_enabled":true}"#),
+            (true, true)
+        );
+        assert_eq!(
+            flags(r#"{"observe_enabled":true,"idle_chatter_enabled":false}"#),
+            (true, true)
+        );
+        assert_eq!(
+            flags(r#"{"observe_enabled":false,"idle_chatter_enabled":true}"#),
+            (false, true)
+        );
+        assert_eq!(
+            flags(r#"{"observe_enabled":false,"idle_chatter_enabled":false}"#),
+            (false, false)
+        );
+    }
+
+    #[test]
+    fn missing_legacy_keys_use_defaults() {
+        // No flags at all: observe defaults off, chatter defaulted on.
+        assert_eq!(flags("{}"), (false, true));
+    }
+
+    #[test]
+    fn explicit_proactive_flag_wins_over_legacy() {
+        assert_eq!(
+            flags(r#"{"observe_enabled":true,"idle_chatter_enabled":true,"proactive_enabled":false}"#),
+            (true, false)
+        );
+    }
 }
 
 #[tauri::command]

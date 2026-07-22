@@ -67,12 +67,14 @@ export default {
       recommended: "（推荐：可与聊天模型共用）",
       observeModel: "观察模型",
       observeModelPlaceholder: "可与聊天模型相同",
-      observeEnable: "开启观察（默认关闭）",
+      proactiveEnable: "主动搭话",
+      proactiveHint:
+        "伙伴会不定时主动聊聊、打打气：间隔为最小分钟数；上限 0＝不限。",
+      observeEnable: "参考屏幕内容（观察，默认关闭）",
+      observeHint:
+        "开启后搭话会参考当前窗口的标题与屏幕文字；即使关闭主动搭话，聊天时也会带入最近的窗口脉络。关闭观察则完全不截取任何屏幕或窗口信息。",
       axPermissionHint:
         "macOS 需在 系统设置→隐私与安全性→辅助功能 授权 Sage，才能读取屏幕文字；未授权时自动以窗口标题观察。",
-      idleChatter: "没开观察也主动搭话",
-      idleChatterHint:
-        "观察关闭时，伙伴仍会按搭话频率随口聊聊、打打气——完全不截取屏幕或窗口信息。",
       interval: "间隔",
       seconds: "秒",
       denyDataCollection: "只发送给不保留数据的 provider",
@@ -92,14 +94,13 @@ export default {
       persona: "个性",
       personaBuiltinHint: "留空＝使用内置人设。",
       personaPetHint: "留空＝按名称与描述自动生成人设。改动会写回这只宠物的 pet.json。",
-      proactiveCooldown: "搭话间隔（分钟）",
+      proactiveCooldown: "间隔（分钟）",
       proactiveMaxPerHour: "每小时上限",
-      proactiveBuiltinHint: "主动搭话的频率：间隔为最小分钟数；上限 0＝不限。",
       proactivePetHint: "留空＝沿用全局设置（{{cooldown}} 分钟、每小时 {{max}}）。",
       proactiveUnlimited: "不限",
       petSageError: "写回宠物的 pet.json 失败——个性与频率未保存。",
       privacyNote:
-        "观察开启后，Sage 会定期读取当前窗口的标题与屏幕文字（经系统辅助功能接口），永不截取屏幕图像。敏感窗口（密码管理器、登录页、无痕…）永不读取内容、标题会遮蔽，标题中的 email、卡号、密钥也会先净化。内容只在内存中处理、发送后即丢弃，不会存盘；关闭观察即完全停止一切读取与上传。",
+        "观察开启后，Sage 会定期读取当前窗口的标题与屏幕文字（经系统辅助功能接口），永不截取屏幕图像。敏感窗口（密码管理器、登录页、无痕…）永不读取内容、标题会遮蔽，标题中的 email、卡号、密钥也会先净化。内容只在内存中处理、发送后即丢弃，不会存盘；关闭观察即完全停止一切读取与上传。观察开启而主动搭话关闭时，观察内容只在你主动聊天时作为上下文使用。",
       cancel: "取消",
       save: "保存",
       saving: "保存中…",

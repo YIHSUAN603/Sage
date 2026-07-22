@@ -33,14 +33,19 @@ export interface Settings {
   chat_model: string;
   /** Model used for observation (text-only prompts). May equal chat_model. */
   observe_model: string;
-  /** Master switch for the observation subsystem. Off by default (privacy). */
+  /**
+   * Master switch for the observation subsystem (window sampling, semantic
+   * snapshots, chat context injection). Off by default (privacy).
+   */
   observe_enabled: boolean;
   /**
-   * Proactive chatter while observation is OFF: the companion still speaks up
-   * on the proactive cadence, but sees nothing — no window content, no window
-   * titles ever leave the machine. On by default (pure companionship).
+   * Master switch for proactive bubbles, independent of observation:
+   * both on ⇒ the companion chats about what it sees; proactive only ⇒ blind
+   * small talk (nothing is ever captured); observe only ⇒ silent observation,
+   * sampling feeds chat context but no bubble ever pops; both off ⇒ quiet.
+   * On by default (pure companionship).
    */
-  idle_chatter_enabled: boolean;
+  proactive_enabled: boolean;
   /** Seconds between active-window polls when observing. */
   observe_interval: number;
   /**
@@ -82,7 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chat_model: "",
   observe_model: "",
   observe_enabled: false,
-  idle_chatter_enabled: true,
+  proactive_enabled: true,
   observe_interval: 8,
   observe_blocklist: [],
   observe_deny_data_collection: true,

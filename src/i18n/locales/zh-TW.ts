@@ -67,12 +67,14 @@ export default {
       recommended: "（推薦：可與聊天模型共用）",
       observeModel: "觀察模型",
       observeModelPlaceholder: "可與聊天模型相同",
-      observeEnable: "開啟觀察（預設關閉）",
+      proactiveEnable: "主動搭話",
+      proactiveHint:
+        "夥伴會不定時主動聊聊、打打氣：間隔為最小分鐘數；上限 0＝不限。",
+      observeEnable: "參考畫面內容（觀察，預設關閉）",
+      observeHint:
+        "開啟後搭話會參考目前視窗的標題與畫面文字；即使關閉主動搭話，聊天時也會帶入最近的視窗脈絡。關閉觀察則完全不擷取任何畫面或視窗資訊。",
       axPermissionHint:
         "macOS 需在 系統設定→隱私權與安全性→輔助使用 授權 Sage，才能讀取畫面文字；未授權時自動以視窗標題觀察。",
-      idleChatter: "沒開觀察也主動搭話",
-      idleChatterHint:
-        "觀察關閉時，夥伴仍會照搭話頻率隨口聊聊、打打氣——完全不擷取畫面或視窗資訊。",
       interval: "間隔",
       seconds: "秒",
       denyDataCollection: "只送給不保留資料的 provider",
@@ -92,14 +94,13 @@ export default {
       persona: "個性",
       personaBuiltinHint: "留空＝使用內建人設。",
       personaPetHint: "留空＝依名稱與描述自動生成人設。改動會寫回這隻寵物的 pet.json。",
-      proactiveCooldown: "搭話間隔（分鐘）",
+      proactiveCooldown: "間隔（分鐘）",
       proactiveMaxPerHour: "每小時上限",
-      proactiveBuiltinHint: "主動搭話的頻率：間隔為最小分鐘數；上限 0＝不限。",
       proactivePetHint: "留空＝沿用全域設定（{{cooldown}} 分鐘、每小時 {{max}}）。",
       proactiveUnlimited: "不限",
       petSageError: "寫回寵物的 pet.json 失敗——個性與頻率未儲存。",
       privacyNote:
-        "觀察開啟後，Sage 會定期讀取目前視窗的標題與畫面文字（經系統輔助功能介面），永不擷取畫面影像。敏感視窗（密碼管理器、登入頁、無痕…）永不讀取內容、標題會遮蔽，標題中的 email、卡號、金鑰也會先淨化。內容只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切讀取與上傳。",
+        "觀察開啟後，Sage 會定期讀取目前視窗的標題與畫面文字（經系統輔助功能介面），永不擷取畫面影像。敏感視窗（密碼管理器、登入頁、無痕…）永不讀取內容、標題會遮蔽，標題中的 email、卡號、金鑰也會先淨化。內容只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切讀取與上傳。觀察開啟而主動搭話關閉時，觀察內容只在你主動聊天時作為脈絡使用。",
       cancel: "取消",
       save: "儲存",
       saving: "儲存中…",

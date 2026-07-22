@@ -1,10 +1,12 @@
 // S5.1/S5.3/S5.4 glue — runs in the avatar window (the only always-visible
 // webview, so its timers are never throttled). Wires sampler → observation
 // store + cross-window context broadcast + a time-driven bubble gate, honoring
-// the settings switch: observe_enabled off ⇒ sampling/snapshot reads stop
-// entirely; idle_chatter_enabled then keeps the companion talking on the same
-// cadence with a see-nothing prompt (no window content, no window titles).
-// Either way, asks are skipped while the user is away from the keyboard.
+// two independent switches: observe_enabled drives sampling/snapshot reads
+// (off ⇒ nothing is ever captured); proactive_enabled drives the bubble
+// cadence (with observation the prompt carries context, without it it's a
+// see-nothing small-talk prompt; observe-only ⇒ silent sampling for chat
+// context, no bubbles). Asks are skipped while the user is away from the
+// keyboard.
 import { useEffect, useRef } from "react";
 import {
   BUBBLE_EVENT,
@@ -67,22 +69,24 @@ interface DevHelpers {
 }
 
 /**
- * Drive the proactive subsystem: full observation while `observe_enabled` is
- * on; capture-free idle chatter while it's off but `idle_chatter_enabled` is
- * on (gated on settings having loaded, so a default-on switch never fires off
- * stale defaults before the real values arrive).
+ * Drive the proactive subsystem from two independent switches: observation
+ * (`observe_enabled`) runs the window sampler; proactive chatter
+ * (`proactive_enabled`) runs the bubble cadence, with or without observed
+ * context. Both are gated on settings having loaded, so a default-on switch
+ * never fires off stale defaults before the real values arrive.
  */
 export function useObservation(): ObservationHandle {
-  const enabled = useSettingsStore((s) => s.settings.observe_enabled);
-  const chatterEnabled = useSettingsStore((s) => s.settings.idle_chatter_enabled);
+  const observeEnabled = useSettingsStore((s) => s.settings.observe_enabled);
+  const proactiveEnabled = useSettingsStore((s) => s.settings.proactive_enabled);
   const loaded = useSettingsStore((s) => s.loaded);
   const intervalSec = useSettingsStore((s) => s.settings.observe_interval);
   const devRef = useRef<DevHelpers | null>(null);
 
-  const idleChatter = !enabled && chatterEnabled && loaded;
+  const enabled = observeEnabled && loaded;
+  const proactive = proactiveEnabled && loaded;
 
   useEffect(() => {
-    if (!enabled && !idleChatter) return;
+    if (!enabled && !proactive) return;
     const ipc = requireIpc();
 
     // When each bubble was shown — drives the maxPerHour quota.
@@ -158,9 +162,9 @@ export function useObservation(): ObservationHandle {
         })
       : null;
 
-    // Time-driven asks: look immediately when the loop starts (observation
-    // just turned on / app launched with idle chatter ⇒ a hello), then on the
-    // cooldown-derived random cadence. The model's SILENT reply filters
+    // Time-driven asks (proactive chatter only): look immediately when the
+    // loop starts (chatter just turned on / app launched ⇒ a hello), then on
+    // the cooldown-derived random cadence. The model's SILENT reply filters
     // content; the maxPerHour quota skips the ask (and its LLM call) entirely
     // once enough bubbles surfaced within the rolling hour.
     const askReasonKey = enabled ? "gate.observeReason" : "gate.idleReason";
@@ -199,12 +203,20 @@ export function useObservation(): ObservationHandle {
     };
 
     if (enabled) {
-      devLog("observation started, interval", Math.max(2, intervalSec), "s");
+      devLog(
+        proactive
+          ? "observation started, interval"
+          : "silent observation started (no bubbles), interval",
+        Math.max(2, intervalSec),
+        "s",
+      );
     } else {
       devLog("idle chatter started (observation off — nothing is captured)");
     }
     sampler?.start();
-    askTimer = setTimeout(() => void runAsk(), 0);
+    if (proactive) {
+      askTimer = setTimeout(() => void runAsk(), 0);
+    }
     return () => {
       devLog(enabled ? "observation stopped" : "idle chatter stopped");
       devRef.current = null;
@@ -213,9 +225,9 @@ export function useObservation(): ObservationHandle {
       sampler?.stop();
       gate.reset();
     };
-  }, [enabled, idleChatter, intervalSec]);
+  }, [enabled, proactive, intervalSec]);
 
-  const devAvailable = import.meta.env.DEV && (enabled || idleChatter);
+  const devAvailable = import.meta.env.DEV && (enabled || proactive);
   return {
     observing: enabled,
     devForceAsk: devAvailable ? () => devRef.current?.forceAsk() : null,
