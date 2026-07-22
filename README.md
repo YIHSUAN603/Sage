@@ -179,11 +179,20 @@ Today Sage forgets everything on restart, which no companion should. This releas
 - Memory is on by default: the files never leave your machine, and memory content reaches your chosen LLM over the exact same path chat content already does. Turn it off in Settings if you'd rather Sage stay goldfish-brained.
 - Memory tools wire into the OpenRouter backend first; the agent-CLI backend gets read-only memory injection to start.
 
-### 0.5 — MCP & tools
+### 0.5 — Voice: talk to your companion
+
+Press and hold the avatar (or tap — configurable) and just talk. Sage listens while you hold, then answers out loud and in a speech bubble — no chat panel needed.
+
+- **Push-to-talk, never always-listening** — the microphone is live only while you hold the avatar; no wake word, no background audio capture. macOS microphone permission (TCC) is requested on first use, and voice can be turned off entirely in Settings.
+- **Pipeline** — on-device speech-to-text (macOS Speech framework; whisper.cpp as the cross-platform fallback, so audio never leaves the machine) → the regular chat loop, so persona, memory, and tools all apply → OS text-to-speech for the reply, mirrored as text in the existing bubble window.
+- **The companion speaks up, too** — voice output isn't just for voice replies: proactive bubbles can be spoken aloud, so when observation finds something worth mentioning, Sage says it instead of only popping a silent bubble. Spoken proactivity is **off by default** (a voice interrupts far more than a bubble) and honors the existing cooldown and per-hour caps. The voice itself is any OS voice, and a pet's `sage` block can declare a preferred voice so custom companions come with their own sound.
+- Voice exchanges land in the same persisted conversation as typed chat, so switching between talking and typing keeps one continuous history.
+
+### 0.6 — MCP & tools
 
 An MCP client, so Sage plugs into the existing tool ecosystem instead of growing bespoke tools one by one — built on the tool-permission tiers that already exist. Combined with the agent-CLI backend, Sage moves from "a character that chats" toward "a desktop agent that can offer to do the thing it just watched you get stuck on."
 
-### 0.6 — Local model backend
+### 0.7 — Local model backend
 
 An Ollama backend so observation screenshots never leave the machine, completing the privacy story and removing the free-tier quota anxiety.
 
