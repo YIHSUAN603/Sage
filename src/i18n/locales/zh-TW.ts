@@ -92,6 +92,14 @@ export default {
       cancel: "取消",
       save: "儲存",
       saving: "儲存中…",
+      updateCurrent: "目前版本 v{{version}}",
+      updateCheck: "檢查更新",
+      updateChecking: "檢查中…",
+      updateNone: "已是最新版",
+      updateAvailable: "下載並安裝 v{{version}}",
+      updateDownloading: "下載中… {{percent}}%",
+      updateRestart: "重新啟動完成更新",
+      updateError: "更新失敗——請稍後再試，或到 GitHub Releases 手動下載。",
     },
     errors: {
       noChatModel:

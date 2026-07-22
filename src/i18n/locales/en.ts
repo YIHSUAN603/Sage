@@ -101,6 +101,14 @@ export default {
       cancel: "Cancel",
       save: "Save",
       saving: "Saving…",
+      updateCurrent: "Current version v{{version}}",
+      updateCheck: "Check for updates",
+      updateChecking: "Checking…",
+      updateNone: "Up to date",
+      updateAvailable: "Download & install v{{version}}",
+      updateDownloading: "Downloading… {{percent}}%",
+      updateRestart: "Restart to finish update",
+      updateError: "Update failed — try again later or download manually from GitHub Releases.",
     },
     errors: {
       noChatModel:

@@ -99,6 +99,14 @@ export default {
       cancel: "キャンセル",
       save: "保存",
       saving: "保存中…",
+      updateCurrent: "現在のバージョン v{{version}}",
+      updateCheck: "更新を確認",
+      updateChecking: "確認中…",
+      updateNone: "最新版です",
+      updateAvailable: "v{{version}} をダウンロードしてインストール",
+      updateDownloading: "ダウンロード中… {{percent}}%",
+      updateRestart: "再起動して更新を完了",
+      updateError: "更新に失敗しました——しばらくしてから再試行するか、GitHub Releases から手動でダウンロードしてください。",
     },
     errors: {
       noChatModel:

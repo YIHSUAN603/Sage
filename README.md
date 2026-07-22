@@ -94,7 +94,13 @@ To publish a release (`.github/workflows/release.yml`):
 3. Actions builds installers for macOS (Apple Silicon + Intel), Windows, and Linux, and creates a **draft** GitHub Release.
 4. Review the draft on the Releases page and publish it.
 
-> macOS builds are unsigned for now — first launch requires right-click → Open to bypass Gatekeeper.
+### In-app updates
+
+Installed apps update themselves via `tauri-plugin-updater`: Settings → "Check for updates" fetches `latest.json` from the latest **published** GitHub Release, so publishing the draft (step 4) is what actually ships the update to users.
+
+Update packages are signed with a minisign key (public key in `tauri.conf.json`; private key stays out of the repo). CI signs them via the `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` Actions secrets — if the private key is ever lost, generate a new pair with `npm run tauri signer generate`, update the pubkey, and re-set the secrets (older installs will then need a manual reinstall).
+
+> macOS builds are unsigned for now — first launch requires right-click → Open to bypass Gatekeeper. In-app updates still work (the updater verifies its own minisign signature). On Linux only the AppImage self-updates; `.deb`/`.rpm` users update through their package manager or manually.
 
 ## Project structure
 

@@ -13,6 +13,7 @@ import {
   PERMISSION_HINT_KEY,
   PERMISSION_LABEL_KEY,
 } from "./agentPermission.ts";
+import { UpdateSection } from "./UpdateSection.tsx";
 
 /**
  * 模型清單載入介面（llm/models.ts 的 fetchFreeToolModels /
@@ -650,6 +651,8 @@ export function SettingsDialog({
             <span>{t("settings.seconds")}</span>
           </label>
         </div>
+
+        <UpdateSection />
 
         <p className="privacy-note">{t("settings.privacyNote")}</p>
 
