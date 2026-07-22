@@ -13,19 +13,25 @@ pub struct ActiveWindow {
     pub title: String,
 }
 
-/// Raw foreground window, unfiltered, plus its process id and system window id
-/// (CGWindowID on macOS) — for the semantic-snapshot gate, so the window whose
-/// content gets read is exactly the window whose title just passed the
-/// blocklist. The ids feed the platform accessibility backends (Track M/W).
+/// Raw foreground window, unfiltered, plus its process id — for the
+/// semantic-snapshot gate, so the window whose content gets read is exactly
+/// the window whose title just passed the blocklist. The pid feeds the
+/// platform accessibility backends (Track M/W).
 pub struct FocusedWindow {
     pub app_name: String,
     pub title: String,
-    /// Owner pid — the macOS AX backend builds AXUIElementCreateApplication from it.
+    /// Owner pid — the macOS AX backend builds AXUIElementCreateApplication
+    /// from it, the Windows UIA backend cross-checks the window's owner.
     pub process_id: u32,
-    #[allow(dead_code)] // consumed by the platform semantic backends
-    pub window_id: Option<u32>,
 }
 
+// macOS has its own backend (context_macos.rs) so the observation subsystem
+// never needs the Screen Recording permission; everywhere else the crate's
+// platform APIs carry no such cost.
+#[cfg(target_os = "macos")]
+pub use crate::context_macos::current_focused;
+
+#[cfg(not(target_os = "macos"))]
 pub fn current_focused() -> Option<FocusedWindow> {
     active_win_pos_rs::get_active_window()
         .ok()
@@ -33,7 +39,6 @@ pub fn current_focused() -> Option<FocusedWindow> {
             app_name: w.app_name,
             title: w.title,
             process_id: w.process_id as u32,
-            window_id: w.window_id.parse().ok(),
         })
 }
 

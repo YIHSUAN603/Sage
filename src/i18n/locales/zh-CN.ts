@@ -74,7 +74,7 @@ export default {
       observeHint:
         "开启后搭话会参考当前窗口的标题与屏幕文字；即使关闭主动搭话，聊天时也会带入最近的窗口脉络。关闭观察则完全不截取任何屏幕或窗口信息。",
       axPermissionHint:
-        "macOS 需在 系统设置→隐私与安全性→辅助功能 授权 Sage，才能读取屏幕文字；未授权时自动以窗口标题观察。",
+        "macOS 需在 系统设置→隐私与安全性→辅助功能 授权 Sage，才能读取窗口标题与屏幕文字；未授权时只看得到当前在前台的 App 名称。Sage 不需要屏幕录制权限。",
       interval: "间隔",
       seconds: "秒",
       denyDataCollection: "只发送给不保留数据的 provider",

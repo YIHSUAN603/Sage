@@ -1,6 +1,8 @@
 mod activity;
 mod agent_cli;
 mod context;
+#[cfg(target_os = "macos")]
+mod context_macos;
 mod llm;
 mod semantic;
 mod pets;

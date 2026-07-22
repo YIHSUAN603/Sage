@@ -78,7 +78,7 @@ export default {
       observeHint:
         "When on, chatter references the current window's title and on-screen text; even with proactive chatter off, chats still carry your recent window context. When off, nothing on screen or about windows is ever captured.",
       axPermissionHint:
-        "On macOS, grant Sage Accessibility permission (System Settings → Privacy & Security → Accessibility) so it can read on-screen text; without it, observation automatically falls back to window titles.",
+        "On macOS, grant Sage Accessibility permission (System Settings → Privacy & Security → Accessibility) so it can read window titles and on-screen text; without it, observation sees only which app is in the foreground. Sage never asks for Screen Recording.",
       interval: "Interval",
       seconds: "s",
       denyDataCollection: "Zero-retention providers only",

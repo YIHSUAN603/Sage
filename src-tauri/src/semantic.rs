@@ -7,15 +7,17 @@
 use serde::Serialize;
 
 // Platform backends produce a RawSnapshot; everything else is shared. Tracks
-// M/W implement read_focused() in their respective files.
+// M/W implement read_focused() in their respective files. Crate-visible
+// because context_macos.rs also borrows the macOS backend's AX FFI to read
+// the focused window's title.
 #[cfg(target_os = "macos")]
 #[path = "semantic_macos.rs"]
-mod platform;
+pub(crate) mod platform;
 #[cfg(target_os = "windows")]
 #[path = "semantic_windows.rs"]
-mod platform;
+pub(crate) mod platform;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-mod platform {
+pub(crate) mod platform {
     pub fn read_focused(
         _window: &crate::context::FocusedWindow,
     ) -> Result<super::RawSnapshot, String> {

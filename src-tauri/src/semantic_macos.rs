@@ -12,6 +12,9 @@
 // `macos-accessibility-client`) would add three dependencies to wrap those
 // same four calls, with less control over CF ownership, so direct FFI wins
 // on both compile risk and maintenance.
+//
+// context_macos.rs calls focused_window_title() from here for the same
+// reason: one AXUIElement FFI declaration in the crate, not two.
 
 use core_foundation::array::{CFArrayGetCount, CFArrayGetTypeID, CFArrayGetValueAtIndex, CFArrayRef};
 use core_foundation::base::{CFGetTypeID, CFRelease, CFTypeID, CFTypeRef, TCFType};
@@ -205,6 +208,26 @@ fn walk(element: AXUIElementRef, depth: usize, out: &mut Collector) {
             walk(child, depth + 1, out);
         }
     }
+}
+
+/// Title of `pid`'s focused window — the foreground-window context's title
+/// source on macOS (context_macos.rs), replacing CGWindowList's kCGWindowName
+/// so no Screen Recording permission is involved. `None` when Accessibility
+/// is not granted or the app exposes no focused window; the caller degrades
+/// to app-name-only rather than dropping the window entirely.
+pub fn focused_window_title(pid: i32) -> Option<String> {
+    if !unsafe { AXIsProcessTrusted() } {
+        return None;
+    }
+    let app = unsafe { AXUIElementCreateApplication(pid) };
+    if app.is_null() {
+        return None;
+    }
+    let app = OwnedCF(app);
+
+    let window = copy_attr(app.0, AX_FOCUSED_WINDOW)?;
+    let title = attr_string(as_element(&window)?, AX_TITLE);
+    (!title.is_empty()).then_some(title)
 }
 
 pub fn read_focused(

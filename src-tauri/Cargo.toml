@@ -29,17 +29,31 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "str
 futures-util = "0.3"
 tokio = { version = "1", features = ["process", "io-util", "rt", "macros"] }
 base64 = "0.22"
-active-win-pos-rs = "0.8"
 regex = "1"
 # dbus (not the default x11) on Linux: CI already ships libdbus-1-dev, and
 # Wayland sessions have no XScreenSaver extension anyway.
 user-idle = { version = "0.6", default-features = false, features = ["dbus"] }
 
+# Foreground window on Windows/Linux. NOT used on macOS: its backend there is
+# CGWindowListCopyWindowInfo, and reading kCGWindowName off that list costs the
+# Screen Recording TCC permission — context_macos.rs gets the same app name and
+# title from NSWorkspace + the Accessibility API instead.
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+active-win-pos-rs = "0.8"
+
 [target.'cfg(target_os = "macos")'.dependencies]
-# AX semantic snapshot backend (semantic_macos.rs): CFString/CFArray handling
-# for the hand-declared AXUIElement FFI. Already a transitive dependency of
-# active-win-pos-rs, so this adds no new code to the build.
+# AX backend (semantic_macos.rs): CFString/CFArray handling for the
+# hand-declared AXUIElement FFI.
 core-foundation = "0.10"
+# NSWorkspace.frontmostApplication (context_macos.rs) — foreground app name and
+# pid with no TCC permission of any kind. Already in the tree via tauri/wry, so
+# only the two class features below are new to the build.
+objc2-app-kit = { version = "0.3", default-features = false, features = [
+    "std",
+    "NSWorkspace",
+    "NSRunningApplication",
+    "libc", # gates NSRunningApplication::processIdentifier
+] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 # Safe wrapper over the UI Automation COM API — used by the Windows semantic

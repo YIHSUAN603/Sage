@@ -11,7 +11,7 @@ Built with Tauri 2, React 19, and TypeScript. Powered by free models on [OpenRou
 - **Tool calling** — the assistant can call tools (currently `read_file`) through a data-driven registry; tool calls and results render as collapsible cards in the chat. Adding a tool doesn't touch the agent loop.
 - **Skills** — drop Claude-Code-compatible skill folders (a `SKILL.md` with `name`/`description` frontmatter) into `<app config dir>/skills/`, and the assistant loads their full instructions on demand via a `use_skill` tool whenever a task matches. New skills take effect on the next message — no restart.
 - **Companions (opt-in character)** — swap the built-in Sage for a custom pet. Drop a folder following the Codex *pet* contract (what OpenAI's `hatch-pet` skill produces) into `<app config dir>/pets/`, and its animated spritesheet becomes the avatar. An optional `sage` block in `pet.json` gives it a custom persona and proactive tuning; a plain hatch-pet folder with neither still works — Sage synthesizes a persona from the name and description. Pick one in Settings; empty falls back to built-in Sage.
-- **Context observation (opt-in)** — Sage can sample your active window title (cheap, frequent) and take throttled, downscaled screenshots (expensive, on demand) to understand what you're doing.
+- **Context observation (opt-in)** — Sage can sample your active window title (cheap, frequent) and take throttled semantic snapshots of the focused window (expensive, on demand) to understand what you're doing. Snapshots read text through the platform accessibility API, never pixels — no screenshots are taken.
 - **Proactive bubbles** — when observation detects something worth mentioning (stuck on the same window, rapid app switching, returning from idle…), Sage pops a small speech bubble instead of interrupting you with a full window. Rate-limited and cooled down so it stays quiet most of the time.
 - **Free models, chosen by capability** — model lists are fetched live from OpenRouter and filtered dynamically: fully free pricing, `tools` support for the chat model, `image` input for the observation model. Nothing is hard-coded.
 - **Multilingual UI** — English, 繁體中文, 简体中文, 日本語 (via i18next).
@@ -20,7 +20,7 @@ Built with Tauri 2, React 19, and TypeScript. Powered by free models on [OpenRou
 
 The architecture follows one rule: **Rust provides capabilities, the frontend orchestrates.**
 
-- The Rust side (`src-tauri/src/`) exposes narrow commands: LLM streaming over SSE (`llm.rs`), screen capture (`capture.rs`), active-window lookup (`context.rs`), local settings (`settings.rs`), file reading (`tools.rs`), and pet/companion discovery (`pets.rs`). The OpenRouter API key is read from settings inside Rust and never enters JavaScript.
+- The Rust side (`src-tauri/src/`) exposes narrow commands: LLM streaming over SSE (`llm.rs`), semantic snapshots of the focused window (`semantic.rs` + per-platform AX/UIA backends), active-window lookup (`context.rs`), local settings (`settings.rs`), file reading (`tools.rs`), and pet/companion discovery (`pets.rs`). The OpenRouter API key is read from settings inside Rust and never enters JavaScript.
 - The frontend owns all state and logic: the function-calling agent loop (`src/llm/loop.ts`), SSE delta accumulation (`src/llm/openrouter.ts`), the tool registry (`src/tools/`), the observation pipeline (`src/observe/`), and Zustand stores (`src/store/`).
 - Skills are plain folders under `<app config dir>/skills/` (created on first scan; next to `settings.json`). Each folder holds a `SKILL.md`; the frontmatter's `name` and `description` go into the `use_skill` tool's catalog, and the body is returned when the model invokes the skill:
 
@@ -52,13 +52,13 @@ The architecture follows one rule: **Rust provides capabilities, the frontend or
 Observation is a hard opt-in, not a default:
 
 - Observation is **off by default** and must be explicitly enabled in Settings; it can be paused at any time.
-- By default only the **focused window** is captured — background windows (messages, banking tabs…) never enter the frame. Full-screen capture is an explicit opt-in.
-- A **sensitive-window blocklist** (password managers, login pages, private-browsing windows, plus your own entries) is enforced in Rust: blocklisted windows are never screenshotted and their titles are masked before anything leaves the machine.
-- Window titles are **sanitized** before use — emails, long digit runs (card/phone numbers), and API-key-shaped tokens are redacted.
+- **No screenshots, ever.** Sage reads structured text from the accessibility API (macOS AX, Windows UI Automation) instead of pixels, so every field passes the privacy pipeline below before leaving Rust. No image of your screen is captured, encoded, or uploaded.
+- Only the **focused window** is read — background windows (messages, banking tabs…) are never touched.
+- A **sensitive-window blocklist** (password managers, login pages, private-browsing windows, plus your own entries) is enforced in Rust: blocklisted windows are never read and their titles are masked before anything leaves the machine.
+- Window titles and every text fragment are **sanitized** before use — emails, long digit runs (card/phone numbers), and API-key-shaped tokens are redacted — then hard-capped in size.
 - Observation requests ask OpenRouter to route only to **zero-retention providers** (`data_collection: "deny"`, on by default). Note that free models' data policies are otherwise up to each provider; with deny on, a model without an eligible provider falls back to title-only observation.
-- Screenshots are processed **in memory only** — downscaled, sent to the vision model, then discarded. Nothing is written to disk.
-- With observation off, no capture or upload of any kind happens.
-- Screen capture on macOS requires the Screen Recording permission (TCC); if denied, Sage falls back to window-title-only mode.
+- With observation off, no reading or upload of any kind happens.
+- On macOS the whole subsystem needs **one permission: Accessibility** (System Settings → Privacy & Security → Accessibility). Sage deliberately never asks for **Screen Recording** — the foreground app's name and pid come from `NSWorkspace`, which needs no permission at all, and the window title comes from the same AX API as the text, rather than from `CGWindowList`'s `kCGWindowName` (which would cost the Screen Recording grant). Without the Accessibility grant, observation degrades to app-name-only rather than failing.
 - Your API key is stored in the local app config directory and stays out of version control and out of the webview.
 
 ## Install
@@ -157,7 +157,7 @@ src/
   components/ Composer, message list, tool-call cards, settings dialog
   i18n/       Locales: en, zh-TW, zh-CN, ja
 src-tauri/
-  src/        Rust capabilities: llm, capture, context, settings, tools, skills, pets
+  src/        Rust capabilities: llm, semantic, context, settings, tools, skills, pets
 ```
 
 ## Notes
@@ -194,7 +194,7 @@ An MCP client, so Sage plugs into the existing tool ecosystem instead of growing
 
 ### 0.7 — Local model backend
 
-An Ollama backend so observation screenshots never leave the machine, completing the privacy story and removing the free-tier quota anxiety.
+An Ollama backend so observation snapshots never leave the machine, completing the privacy story and removing the free-tier quota anxiety.
 
 ### 1.0 — Signing & ecosystem
 

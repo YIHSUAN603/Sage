@@ -74,7 +74,7 @@ export default {
       observeHint:
         "開啟後搭話會參考目前視窗的標題與畫面文字；即使關閉主動搭話，聊天時也會帶入最近的視窗脈絡。關閉觀察則完全不擷取任何畫面或視窗資訊。",
       axPermissionHint:
-        "macOS 需在 系統設定→隱私權與安全性→輔助使用 授權 Sage，才能讀取畫面文字；未授權時自動以視窗標題觀察。",
+        "macOS 需在 系統設定→隱私權與安全性→輔助使用 授權 Sage，才能讀取視窗標題與畫面文字；未授權時只看得到目前在前景的 App 名稱。Sage 不需要螢幕錄製權限。",
       interval: "間隔",
       seconds: "秒",
       denyDataCollection: "只送給不保留資料的 provider",
