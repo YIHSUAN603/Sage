@@ -62,7 +62,15 @@ jobs:
           releaseBody: |
             請至下方 Assets 下載對應平台的安裝檔。
 
-            > macOS 版尚未簽章：第一次開啟請在 App 上按右鍵 →「打開」以繞過 Gatekeeper。
+            **macOS 建議使用 Homebrew 安裝**（免除 Gatekeeper「已損毀」問題）：
+
+            ```
+            brew tap YIHSUAN603/tap
+            brew install --cask --no-quarantine sage
+            ```
+
+            > 若直接下載 dmg：macOS 版尚未經 Apple 簽章，開啟前請先在終端機執行
+            > `xattr -cr /Applications/sage.app` 移除隔離標記，否則會顯示「已損毀，無法打開」。
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
