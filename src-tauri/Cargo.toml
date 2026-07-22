@@ -41,3 +41,8 @@ user-idle = { version = "0.6", default-features = false, features = ["dbus"] }
 # active-win-pos-rs, so this adds no new code to the build.
 core-foundation = "0.10"
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# Safe wrapper over the UI Automation COM API — used by the Windows semantic
+# snapshot backend (semantic_windows.rs).
+uiautomation = "0.25"
+
