@@ -31,7 +31,7 @@ export default {
     avatar: {
       observing: "觀察中——點一下暫停（重新開啟請到設定）",
       pauseObserve: "暫停觀察",
-      devTest: "測試冒泡（dev 限定）：點=立刻截圖問模型一次；Shift+點=直接出假氣泡",
+      devTest: "測試冒泡（dev 限定）：點擊＝讀取畫面文字並詢問模型一次；Shift+點=直接出假氣泡",
       devTestAria: "測試冒泡",
       toggleChat: "開關對話氣泡",
       sprite: "點一下跟 {{name}} 聊天，按住拖拉移動",
@@ -60,30 +60,28 @@ export default {
       agentCliPermReadOnlyHint: "唯讀：可讀取檔案與搜尋，但不能執行指令或修改。",
       agentCliPermEditHint: "可編輯：可建立、修改檔案並使用 skill，仍不能執行任意指令。",
       agentCliPermFullHint: "完整：可執行任意指令、修改任何檔案，請自行承擔風險。",
-      agentCliCodexObserve: "Codex 只依視窗標題觀察（不使用截圖）。",
       chatModel: "聊天模型（必填，需支援 tools）",
       chatModelPlaceholder: "點一下從清單挑選，或直接填 model id",
       modelsError:
         "模型清單載入失敗——請自行填入 OpenRouter model id（例：google/gemma-4-26b-a4b-it:free）。",
       recommended: "（推薦：tools+vision 通吃）",
-      observeModel: "觀察模型（需支援圖片輸入）",
+      observeModel: "觀察模型",
       observeModelPlaceholder: "可與聊天模型相同",
       observeEnable: "開啟觀察（預設關閉）",
+      axPermissionHint:
+        "macOS 需在 系統設定→隱私權與安全性→輔助使用 授權 Sage，才能讀取畫面文字；未授權時自動以視窗標題觀察。",
       idleChatter: "沒開觀察也主動搭話",
       idleChatterHint:
         "觀察關閉時，夥伴仍會照搭話頻率隨口聊聊、打打氣——完全不擷取畫面或視窗資訊。",
       interval: "間隔",
       seconds: "秒",
-      captureMode: "截圖範圍",
-      captureModeWindow: "僅前景視窗（建議）",
-      captureModeScreen: "整個螢幕",
       denyDataCollection: "只送給不保留資料的 provider",
       denyDataCollectionHint:
-        "觀察請求要求 OpenRouter 只路由到不保留、不拿輸入訓練的 provider。部分免費模型可能因此無法附截圖，屆時自動退回純標題觀察。",
+        "觀察請求要求 OpenRouter 只路由到不保留、不拿輸入訓練的 provider。部分免費模型可能因此沒有可用的 provider，屆時觀察自動退回純標題。",
       blocklist: "敏感視窗黑名單",
       blocklistPlaceholder: "一行一項，例如：\n網銀\nLINE",
       blocklistHint:
-        "App 名稱或視窗標題含任一關鍵字時：不截圖、標題以「[private]」遮蔽。內建名單（密碼管理器、登入頁、無痕視窗…）永遠生效。",
+        "App 名稱或視窗標題含任一關鍵字時：不讀取視窗內容、標題以「[private]」遮蔽。內建名單（密碼管理器、登入頁、無痕視窗…）永遠生效。",
       language: "語言",
       languageAuto: "跟隨系統",
       companion: "夥伴",
@@ -101,7 +99,7 @@ export default {
       proactiveUnlimited: "不限",
       petSageError: "寫回寵物的 pet.json 失敗——個性與頻率未儲存。",
       privacyNote:
-        "觀察開啟後，Sage 會定期讀取目前視窗標題，必要時擷取螢幕縮圖送往 OpenRouter 判斷「有沒有值得一提的事」。預設只截前景視窗；敏感視窗（密碼管理器、登入頁、無痕…）不截圖、標題會遮蔽，標題中的 email、卡號、金鑰也會先淨化。截圖只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切擷取與上傳。",
+        "觀察開啟後，Sage 會定期讀取目前視窗的標題與畫面文字（經系統輔助功能介面），永不擷取畫面影像。敏感視窗（密碼管理器、登入頁、無痕…）永不讀取內容、標題會遮蔽，標題中的 email、卡號、金鑰也會先淨化。內容只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切讀取與上傳。",
       cancel: "取消",
       save: "儲存",
       saving: "儲存中…",
@@ -134,13 +132,18 @@ export default {
         "你偶爾會看到使用者目前的工作脈絡。看到有趣或值得一提的觀察時，就用繁體中文隨口聊一句；就算沒什麼特別的觀察，偶爾也可以搭句話、閒聊或打打氣，讓他工作時有人陪、不無聊。但不用每次都講話，如果這個當下你沒什麼想說的，就只回覆 SILENT，別硬找話說，也不要輸出任何其他文字。開口時控制在 50 字以內。",
       trigger: "觸發原因：{{reason}}",
       recentActivity: "最近的視窗活動（新到舊）：",
-      withScreenshot: "（附上目前的螢幕縮圖）",
-      noScreenshot: "（無法取得螢幕截圖，只有視窗標題可參考）",
+      withSemantic: "目前視窗的畫面文字（經系統輔助功能介面讀取）：",
+      titleOnly: "（無法取得畫面文字，只有視窗標題可參考）",
       forceAskReason: "使用者主動詢問目前脈絡",
       observeReason: "定期看看使用者現在在忙什麼",
       idleReason: "定期跟使用者搭句話",
       idleContext:
         "（目前沒有開啟桌面觀察，你看不到使用者的畫面或視窗，也不知道他在做什麼。就單純像朋友一樣搭句話——打個招呼、閒聊或打打氣，別假裝你看得到他的工作內容。）",
+    },
+    snapshot: {
+      focused: "焦點元件：{{detail}}",
+      selection: "選取文字：{{text}}",
+      truncated: "（畫面文字過長，已截斷）",
     },
     context: {
       intro:

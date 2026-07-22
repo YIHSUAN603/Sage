@@ -1,11 +1,12 @@
 // S5.3 — Bubble gate: turns one observation into (maybe) a spoken remark.
-// Time-driven — the runner calls forceAsk on a random cadence; the gate just
-// keeps a short window-title history for context and, on each ask, runs one
-// observe-model call that must answer with a short remark or the literal word
-// SILENT. Interim state: title-only prompts — the semantic-snapshot content
-// (Track F) replaces the removed screenshot path.
+// Time-driven — the runner calls forceAsk on a random cadence; the gate keeps
+// a short window-title history for context and, on each ask, reads a semantic
+// snapshot of the focused window (accessibility text — the screenshot's
+// replacement) + runs one observe-model call that must answer with a short
+// remark or the literal word SILENT. Snapshot failures (permission missing,
+// sensitive window, observation just off) fall back to title-only prompts.
 import i18n from "../i18n/index.ts";
-import type { ChatMessage, SageIpc } from "../ipc/contract.ts";
+import type { ChatMessage, SageIpc, SemanticSnapshot } from "../ipc/contract.ts";
 import { gateSystem } from "../store/persona.ts";
 import type { RunObserve } from "./runObserve.ts";
 
@@ -46,6 +47,32 @@ export interface BubbleGate {
   reset(): void;
 }
 
+/**
+ * Render a semantic snapshot as prompt lines, skipping empty fields — the
+ * focused element (role — value), the selection, the visible text fragments
+ * as bullets, and a truncation note. All labels resolve through the `prompt`
+ * i18n namespace so the model reads them in the UI language.
+ */
+function renderSnapshot(snapshot: SemanticSnapshot): string {
+  const lines: string[] = [];
+  const detail = [snapshot.focused_role, snapshot.focused_value]
+    .filter(Boolean)
+    .join(" — ");
+  if (detail) {
+    lines.push(i18n.t("snapshot.focused", { ns: "prompt", detail }));
+  }
+  if (snapshot.selection) {
+    lines.push(i18n.t("snapshot.selection", { ns: "prompt", text: snapshot.selection }));
+  }
+  for (const text of snapshot.texts) {
+    if (text) lines.push(`- ${text}`);
+  }
+  if (snapshot.truncated) {
+    lines.push(i18n.t("snapshot.truncated", { ns: "prompt" }));
+  }
+  return lines.join("\n");
+}
+
 export function createBubbleGate(options: GateOptions): BubbleGate {
   const historyLimit = options.historyLimit ?? 60;
 
@@ -56,6 +83,23 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
   /** One model round-trip; returns the remark or null (silent/error). */
   async function ask(reason: string): Promise<string | null> {
+    // The semantic snapshot is best-effort: a missing accessibility
+    // permission, a sensitive window, or observation just turned off falls
+    // back to the title-only prompt (PLAN privacy constraint). Idle mode
+    // never even tries — there is nothing to observe.
+    let snapshot: SemanticSnapshot | null = null;
+    if (!options.idle) {
+      try {
+        snapshot = await options.ipc.semanticSnapshot();
+        debug(`語意快照成功（${snapshot.texts.length} 段文字）`);
+      } catch (err) {
+        snapshot = null;
+        debug(
+          `語意快照失敗，退回純標題模式：${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
     const recentLines = samples
       .slice(-8)
       .reverse()
@@ -72,7 +116,9 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
           i18n.t("gate.trigger", { ns: "prompt", reason }),
           i18n.t("gate.recentActivity", { ns: "prompt" }),
           recentLines,
-          i18n.t("gate.noScreenshot", { ns: "prompt" }),
+          ...(snapshot
+            ? [i18n.t("gate.withSemantic", { ns: "prompt" }), renderSnapshot(snapshot)]
+            : [i18n.t("gate.titleOnly", { ns: "prompt" })]),
         ].join("\n");
 
     const messages: ChatMessage[] = [

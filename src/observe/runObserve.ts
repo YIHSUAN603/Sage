@@ -1,7 +1,8 @@
 // One observation turn, routed to whichever backend is active. The bubble gate
-// builds the messages (system + recent-activity text + optional inline
-// screenshot); this decides how to get a reply out of them. Settings are read at
-// call time via `getSettings`, so switching backend takes effect on the next ask.
+// builds the messages (system + recent-activity + semantic-snapshot text) —
+// always plain text, no images — and this decides how to get a reply out of
+// them. Settings are read at call time via `getSettings`, so switching backend
+// takes effect on the next ask.
 import type { ChatMessage, ChatRequest, SageIpc, Settings } from "../ipc/contract.ts";
 import { createDeltaAccumulator } from "../llm/openrouter.ts";
 
@@ -36,33 +37,16 @@ async function observeViaOpenRouter(
     return null; // nothing configured — never burn an error on the user
   }
 
-  const attempt = async (msgs: ChatMessage[]) => {
-    const req: ChatRequest = { model, messages: msgs };
-    if (deny) req.data_policy = "deny";
-    const acc = createDeltaAccumulator();
-    await ipc.chatStream(req, (event) => acc.push(event));
-    return acc.finish();
-  };
-
+  const req: ChatRequest = { model, messages };
+  if (deny) req.data_policy = "deny";
+  const acc = createDeltaAccumulator();
   let finished;
   try {
-    finished = await attempt(messages);
+    await ipc.chatStream(req, (event) => acc.push(event));
+    finished = acc.finish();
   } catch (err) {
     debug(`chat_stream 呼叫失敗：${message(err)}`);
     return null;
-  }
-
-  // data_collection: deny can leave a free vision model with no eligible
-  // provider (OpenRouter 404). Retry once title-only — the deny policy stays;
-  // it's the screenshot we drop, never the privacy requirement.
-  if (finished.error && deny && hasImages(messages) && isProviderError(finished.error)) {
-    debug("零保留 provider 無法服務圖片請求，剝除截圖改用純文字重試");
-    try {
-      finished = await attempt(stripImages(messages));
-    } catch (err) {
-      debug(`chat_stream 重試失敗：${message(err)}`);
-      return null;
-    }
   }
 
   const { message: reply, error } = finished;
@@ -73,17 +57,6 @@ async function observeViaOpenRouter(
   return typeof reply.content === "string" ? reply.content : "";
 }
 
-/** OpenRouter's "no allowed providers" rejection (404 or a provider-y message). */
-function isProviderError(error: { status?: number; message: string }): boolean {
-  return error.status === 404 || /provider/i.test(error.message);
-}
-
-function hasImages(messages: ChatMessage[]): boolean {
-  return messages.some(
-    (m) => Array.isArray(m.content) && m.content.some((p) => p.type === "image_url"),
-  );
-}
-
 async function observeViaAgentCli(
   ipc: SageIpc,
   cli: Settings["agent_cli"],
@@ -91,13 +64,10 @@ async function observeViaAgentCli(
   messages: ChatMessage[],
   debug: (m: string) => void,
 ): Promise<string | null> {
-  // codex can't take an inline image (`-i` wants a file path, and `--json` hangs
-  // when an image is attached), so it observes title-only.
-  const out = cli === "codex" ? stripImages(messages) : messages;
   let text = "";
   let errored: string | null = null;
   try {
-    await ipc.agentStream({ cli, messages: out, purpose: "observe", model }, (event) => {
+    await ipc.agentStream({ cli, messages, purpose: "observe", model }, (event) => {
       if (event.type === "delta") text += event.content;
       else if (event.type === "error") errored = event.message;
     });
@@ -110,17 +80,6 @@ async function observeViaAgentCli(
     return null;
   }
   return text;
-}
-
-/** Drop image parts, collapsing content to its text (for codex title-only). */
-function stripImages(messages: ChatMessage[]): ChatMessage[] {
-  return messages.map((m) => {
-    if (!Array.isArray(m.content)) return m;
-    const text = m.content
-      .flatMap((part) => (part.type === "text" ? [part.text] : []))
-      .join("\n");
-    return { ...m, content: text };
-  });
 }
 
 function message(err: unknown): string {

@@ -532,9 +532,6 @@ export function SettingsDialog({
                   {cliCheck.text}
                 </span>
               )}
-              {draft.agent_cli === "codex" && (
-                <span className="field-hint">{t("settings.agentCliCodexObserve")}</span>
-              )}
             </label>
 
             <label className="field">
@@ -663,6 +660,7 @@ export function SettingsDialog({
             <span>{t("settings.seconds")}</span>
           </label>
         </div>
+        <span className="field-hint">{t("settings.axPermissionHint")}</span>
 
         <div className="field">
           <label className="switch-label">

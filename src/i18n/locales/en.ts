@@ -32,7 +32,7 @@ export default {
       observing: "Observing — click to pause (re-enable in settings)",
       pauseObserve: "Pause observation",
       devTest:
-        "Test bubble (dev only): click = screenshot + ask the model once; Shift+click = show a fake bubble",
+        "Test bubble (dev only): click = read the screen text + ask the model once; Shift+click = show a fake bubble",
       devTestAria: "Test bubble",
       toggleChat: "Toggle chat bubble",
       sprite: "Click to chat with {{name}}, hold and drag to move",
@@ -64,30 +64,28 @@ export default {
         "Can edit: it can create and modify files and use skills, but still can't run arbitrary commands.",
       agentCliPermFullHint:
         "Full access: it can run arbitrary commands and modify any file — use at your own risk.",
-      agentCliCodexObserve: "Codex observes by window title only (no screenshot).",
       chatModel: "Chat model (required, must support tools)",
       chatModelPlaceholder: "Click to pick from the list, or type a model id",
       modelsError:
         "Couldn't load the model list — please enter an OpenRouter model id yourself (e.g. google/gemma-4-26b-a4b-it:free).",
       recommended: " (recommended: tools + vision)",
-      observeModel: "Observe model (must accept image input)",
+      observeModel: "Observe model",
       observeModelPlaceholder: "May be the same as the chat model",
       observeEnable: "Enable observation (off by default)",
+      axPermissionHint:
+        "On macOS, grant Sage Accessibility permission (System Settings → Privacy & Security → Accessibility) so it can read on-screen text; without it, observation automatically falls back to window titles.",
       idleChatter: "Chat even when observation is off",
       idleChatterHint:
         "With observation off, your companion still pipes up on the chatter cadence — without capturing the screen or window info at all.",
       interval: "Interval",
       seconds: "s",
-      captureMode: "Capture area",
-      captureModeWindow: "Focused window only (recommended)",
-      captureModeScreen: "Entire screen",
       denyDataCollection: "Zero-retention providers only",
       denyDataCollectionHint:
-        "Observation requests ask OpenRouter to route only to providers that don't retain or train on inputs. Some free models may then be unable to take screenshots; observation falls back to titles only.",
+        "Observation requests ask OpenRouter to route only to providers that don't retain or train on inputs. Some free models may then have no eligible provider; observation falls back to titles only.",
       blocklist: "Sensitive-window blocklist",
       blocklistPlaceholder: "One entry per line, e.g.\nmy bank\nLINE",
       blocklistHint:
-        "When the app name or window title contains any entry: no screenshot, and the title is masked as \"[private]\". The built-in list (password managers, login pages, private browsing…) always applies.",
+        "When the app name or window title contains any entry: its content is never read, and the title is masked as \"[private]\". The built-in list (password managers, login pages, private browsing…) always applies.",
       language: "Language",
       languageAuto: "Follow system",
       companion: "Companion",
@@ -110,7 +108,7 @@ export default {
       petSageError:
         "Failed to write the pet's pet.json — personality and cadence were not saved.",
       privacyNote:
-        "When observation is on, Sage periodically reads the current window title and, when needed, sends a screen thumbnail to OpenRouter to decide whether anything is worth mentioning. By default only the focused window is captured; sensitive windows (password managers, login pages, private browsing…) are never photographed and their titles are masked, and emails, card numbers, and keys are redacted from titles. Screenshots are processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all capture and upload entirely.",
+        "When observation is on, Sage periodically reads the current window's title and on-screen text (via the system accessibility API) — it never captures screen images. Sensitive windows (password managers, login pages, private browsing…) never have their content read and their titles are masked, with emails, card numbers, and keys redacted from titles. Content is processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all reading and upload entirely.",
       cancel: "Cancel",
       save: "Save",
       saving: "Saving…",
@@ -143,13 +141,18 @@ export default {
         "You occasionally get a glimpse of the user's current context. When you notice something fun or worth mentioning, drop a casual line in English; even with nothing in particular to note, feel free now and then to chat, joke, or cheer them on, so work feels less lonely. You don't have to speak every time: if you have nothing you feel like saying right now, reply with only SILENT — don't force it, and output no other text. When you do speak, keep it to one sentence, at most 30 words.",
       trigger: "Trigger: {{reason}}",
       recentActivity: "Recent window activity (newest first):",
-      withScreenshot: "(A thumbnail of the current screen is attached.)",
-      noScreenshot: "(Screenshot unavailable — only window titles to go on.)",
+      withSemantic: "On-screen text of the current window (read via the system accessibility API):",
+      titleOnly: "(Screen text unavailable — only window titles to go on.)",
       forceAskReason: "The user explicitly asked about the current context",
       observeReason: "Routine check-in on what the user is doing",
       idleReason: "Routine hello to keep the user company",
       idleContext:
         "(Desktop observation is off — you can't see the user's screen or windows and don't know what they're doing. Just keep them company like a friend: say hi, make small talk, or cheer them on, and never pretend you can see their work.)",
+    },
+    snapshot: {
+      focused: "Focused element: {{detail}}",
+      selection: "Selected text: {{text}}",
+      truncated: "(The screen text was too long and got truncated.)",
     },
     context: {
       intro:
