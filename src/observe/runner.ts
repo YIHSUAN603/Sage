@@ -21,6 +21,7 @@ import { useObservationStore } from "../store/observation.ts";
 import { useSettingsStore } from "../store/settings.ts";
 import { showBubbleWindow } from "../windows/chatToggle.ts";
 import { proactiveTuning } from "../store/persona.ts";
+import { buildMemoryIndexMessage } from "../memory/context.ts";
 import { createBubbleGate } from "./gate.ts";
 import { IDLE_SKIP_SECONDS, shouldSkipWhenIdle } from "./idle.ts";
 import { pruneHourWindow, underHourlyQuota } from "./quota.ts";
@@ -115,6 +116,17 @@ export function useObservation(): ObservationHandle {
       idle: !enabled,
       runObserve: createRunObserve(ipc, () => useSettingsStore.getState().settings),
       onBubble: presentBubble,
+      // Read-only long-term memory: give the proactive prompts the same memory
+      // index that chat.ts injects (no save/recall/forget tools). Resolved per
+      // ask so a settings toggle / new memories take effect next cadence.
+      memoryPrefix: async () => {
+        if (!useSettingsStore.getState().settings.memory_enabled) return null;
+        try {
+          return buildMemoryIndexMessage(await ipc.listMemories());
+        } catch {
+          return null;
+        }
+      },
       onDebug(message) {
         devLog("ask:", message);
         askTrail.push(message);

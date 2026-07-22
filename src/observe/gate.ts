@@ -41,6 +41,14 @@ export interface GateOptions {
    * mentions window activity — the ask is a pure keep-them-company prompt.
    */
   idle?: boolean;
+  /**
+   * Read-only long-term memory injection: resolves the memory-index system
+   * message (or null when memory is off / empty). Rides into both the assess
+   * and compose prompts so a proactive remark can draw on what the companion
+   * remembers — the same index chat.ts injects, but with no save/recall/forget
+   * tools (proactive chatter is observe-only, i.e. read-only).
+   */
+  memoryPrefix?(): Promise<ChatMessage | null>;
   /** Diagnostic trace of each ask (assess/snapshot/stream error/reply). */
   onDebug?(message: string): void;
 }
@@ -135,7 +143,10 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
    * recently said, no accessibility snapshot. Returns a focus hint (what to
    * notice + suggested register) or null (SILENT / not the moment / error).
    */
-  async function assess(prev: WindowSample | null): Promise<string | null> {
+  async function assess(
+    prev: WindowSample | null,
+    memory: ChatMessage | null,
+  ): Promise<string | null> {
     const change = changeSince(prev, currentWindow());
     const said = recentlySaidBlock();
     const text = [
@@ -150,6 +161,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
     const messages: ChatMessage[] = [
       { role: "system", content: await assessSystem() },
+      ...(memory ? [memory] : []),
       { role: "user", content: text },
     ];
 
@@ -169,7 +181,11 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
    * semantic snapshot (observe mode only), carries the stage-1 focus hint and
    * the repetition guard. Returns the remark or null (SILENT / error).
    */
-  async function compose(reason: string, focus: string | null): Promise<string | null> {
+  async function compose(
+    reason: string,
+    focus: string | null,
+    memory: ChatMessage | null,
+  ): Promise<string | null> {
     // The semantic snapshot is best-effort: a missing accessibility
     // permission, a sensitive window, or observation just turned off falls
     // back to the title-only prompt (PLAN privacy constraint). Idle mode
@@ -211,6 +227,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
     const messages: ChatMessage[] = [
       { role: "system", content: await gateSystem() },
+      ...(memory ? [memory] : []),
       { role: "user", content: text },
     ];
 
@@ -249,16 +266,21 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     const prev = lastAskWindow;
     lastAskWindow = now;
 
+    // Read-only memory index, fetched once and shared by both stages (a local
+    // fs scan; one per ask, every few minutes — negligible). Null when memory
+    // is off or empty.
+    const memory = options.memoryPrefix ? await options.memoryPrefix() : null;
+
     // Stage 1 assess (observe mode only). Idle has nothing to read the room
     // with, so it goes straight to a companionship line.
     let focus: string | null = null;
     if (!options.idle) {
-      focus = await assess(prev);
+      focus = await assess(prev, memory);
       if (focus === null) return null;
     }
 
     // Stage 2 compose.
-    return compose(reason, focus);
+    return compose(reason, focus, memory);
   }
 
   return {
