@@ -35,3 +35,8 @@ regex = "1"
 # Wayland sessions have no XScreenSaver extension anyway.
 user-idle = { version = "0.6", default-features = false, features = ["dbus"] }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+# Safe wrapper over the UI Automation COM API — used by the Windows semantic
+# snapshot backend (semantic_windows.rs).
+uiautomation = "0.25"
+
