@@ -62,10 +62,10 @@ jobs:
           releaseBody: |
             請至下方 Assets 下載對應平台的安裝檔。
 
-            **macOS 建議使用 Homebrew 安裝**（免除 Gatekeeper「已損毀」問題）：
+            **macOS 建議使用 Homebrew 安裝**（cask 會自動清除隔離標記，免除 Gatekeeper「已損毀」問題）：
 
             ```
-            brew install --cask --no-quarantine YIHSUAN603/tap/sage
+            brew install --cask YIHSUAN603/tap/sage
             ```
 
             （名稱需完整寫 `YIHSUAN603/tap/sage`，因官方另有同名的 SageMath cask）

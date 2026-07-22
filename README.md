@@ -72,11 +72,11 @@ Observation is a hard opt-in, not a default:
 2. **Install Sage:**
 
    ```sh
-   brew install --cask --no-quarantine YIHSUAN603/tap/sage
+   brew install --cask YIHSUAN603/tap/sage
    ```
 
    - Use the full name `YIHSUAN603/tap/sage` — the official Homebrew repo has an unrelated `sage` cask (SageMath).
-   - `--no-quarantine` is needed because macOS builds are unsigned; without it Gatekeeper reports the app as "damaged".
+   - macOS builds are unsigned, so the cask clears the quarantine flag for you after install (Homebrew 6 removed the old `--no-quarantine` flag). If you still see an "app is damaged" dialog, run `xattr -cr /Applications/sage.app` once.
 
 3. **Launch it** — the app is installed to `/Applications/sage.app`; open it from Launchpad/Spotlight, or:
 
