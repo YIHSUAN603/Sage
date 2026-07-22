@@ -299,8 +299,9 @@ fn parse_data_url(url: &str) -> Option<(String, String)> {
     Some((media.to_string(), data.to_string()))
 }
 
-/// Anthropic image content blocks for every `image_url` data URL in the messages
-/// (in practice: the observation screenshot, passed inline — never written to disk).
+/// Anthropic image content blocks for every `image_url` data URL in the messages.
+/// Observation no longer sends images (semantic snapshots are text-only); this
+/// remains for generic chat messages that attach one.
 fn collect_image_blocks(messages: &[ChatMessage]) -> Vec<Value> {
     let mut blocks = Vec::new();
     for m in messages {

@@ -1,8 +1,8 @@
 // Codex adapter: `codex exec` with `--json` (JSONL events); the tool posture is
 // the `--sandbox` level picked by `req.permission`. The whole conversation is fed on stdin
 // (prompt sentinel `-`). Images are NOT sent: `codex exec -i` takes a file path
-// (not inline data) and `--json` is known to hang with images, so observation
-// through codex is title-only (the frontend already drops the screenshot).
+// (not inline data) and `--json` is known to hang with images. Observation is
+// unaffected — its prompts are text-only (semantic snapshots) on every backend.
 use serde_json::Value;
 
 use super::{collect_body, collect_system, AgentRequest, AgentStreamEvent, Adapter, Spawn};

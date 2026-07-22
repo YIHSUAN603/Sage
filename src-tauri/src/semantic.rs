@@ -69,11 +69,7 @@ pub fn semantic_snapshot(app: tauri::AppHandle) -> Result<SemanticSnapshot, Stri
     }
 
     let raw = platform::read_focused(&focused)?;
-    Ok(assemble(
-        focused.app_name,
-        crate::privacy::sanitize_text(&focused.title),
-        raw,
-    ))
+    Ok(assemble(focused.app_name, &focused.title, raw))
 }
 
 /// Sanitize one fragment, then trim it to the per-fragment cap and whatever
@@ -90,11 +86,14 @@ fn cap(text: &str, budget: &mut usize, truncated: &mut bool) -> String {
 }
 
 /// Sanitize every raw field and enforce the size caps. Pure — unit-testable
-/// without a platform backend.
-fn assemble(app_name: String, title: String, raw: RawSnapshot) -> SemanticSnapshot {
+/// without a platform backend. The title spends the shared budget first —
+/// contract.ts promises every string is sanitized AND size-capped, and long
+/// document/URL titles are common.
+fn assemble(app_name: String, title: &str, raw: RawSnapshot) -> SemanticSnapshot {
     let mut truncated = false;
     let mut budget = MAX_TOTAL_CHARS;
 
+    let title = cap(title, &mut budget, &mut truncated);
     let focused_value = cap(&raw.focused_value, &mut budget, &mut truncated);
     let selection = cap(&raw.selection, &mut budget, &mut truncated);
     let mut texts: Vec<String> = Vec::new();
@@ -138,7 +137,7 @@ mod tests {
     fn assemble_sanitizes_every_field() {
         let snap = assemble(
             "Mail".into(),
-            "Inbox".into(),
+            "Inbox — bob.lee@example.com",
             RawSnapshot {
                 focused_role: "AXTextField".into(),
                 focused_value: "to: alice.wu@example.com".into(),
@@ -146,6 +145,7 @@ mod tests {
                 texts: vec!["env: sk-or-v1-abcdef1234567890".into()],
             },
         );
+        assert_eq!(snap.title, "Inbox — ***");
         assert_eq!(snap.focused_value, "to: ***");
         assert_eq!(snap.selection, "card ***");
         assert_eq!(snap.texts, vec!["env: ***"]);
@@ -153,9 +153,17 @@ mod tests {
     }
 
     #[test]
+    fn assemble_caps_the_title_like_every_other_field() {
+        let long_title = "標".repeat(400);
+        let snap = assemble("Docs".into(), &long_title, raw("", &[]));
+        assert_eq!(snap.title.chars().count(), 200);
+        assert!(snap.truncated);
+    }
+
+    #[test]
     fn assemble_caps_fragment_length() {
         let long = "字".repeat(500);
-        let snap = assemble("App".into(), "T".into(), raw(&long, &[]));
+        let snap = assemble("App".into(), "T", raw(&long, &[]));
         assert_eq!(snap.focused_value.chars().count(), 200);
         assert!(snap.truncated);
     }
@@ -164,7 +172,7 @@ mod tests {
     fn assemble_caps_fragment_count_and_total_budget() {
         let many: Vec<String> = (0..30).map(|i| format!("line {i} {}", "x".repeat(150))).collect();
         let refs: Vec<&str> = many.iter().map(|s| s.as_str()).collect();
-        let snap = assemble("App".into(), "T".into(), raw("", &refs));
+        let snap = assemble("App".into(), "T", raw("", &refs));
         assert!(snap.texts.len() <= 20);
         let total: usize = snap.texts.iter().map(|t| t.chars().count()).sum();
         assert!(total <= 2000);
@@ -173,7 +181,7 @@ mod tests {
 
     #[test]
     fn assemble_drops_empty_fragments() {
-        let snap = assemble("App".into(), "T".into(), raw("", &["", "hello", ""]));
+        let snap = assemble("App".into(), "T", raw("", &["", "hello", ""]));
         assert_eq!(snap.texts, vec!["hello"]);
     }
 }

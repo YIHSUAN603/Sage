@@ -21,9 +21,10 @@ pub struct ChatRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<ToolDef>>,
     /// "deny" ⇒ the OpenRouter body gets provider.data_collection = "deny"
-    /// (observation requests carry screenshots; only zero-retention providers
-    /// may serve them). Stripped from the body before sending — OpenRouter
-    /// never sees this field itself.
+    /// (observation requests carry the focused window's accessibility text;
+    /// only zero-retention providers may serve them — still a real privacy
+    /// guard even though observation no longer sends images). Stripped from
+    /// the body before sending — OpenRouter never sees this field itself.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub data_policy: Option<String>,
 }
