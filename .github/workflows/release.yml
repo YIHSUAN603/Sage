@@ -82,7 +82,11 @@ jobs:
           # keychain 匯出公開憑證（不經 openssl，避開其 legacy p12 相容性問題），
           # 設為 code signing 可信根後 identity 才會 valid。
           security find-certificate -c "$APPLE_SIGNING_IDENTITY" -p "$KEYCHAIN" > "$CER"
-          security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$CER"
+          # 信任設定寫 admin domain（System keychain）並以 sudo 執行：headless CI 上
+          # 才不會跳 SecurityAgent 圖形授權對話框。若寫 user domain（省略 -d）會彈窗
+          # 等人輸入密碼，在無頭 runner 上會永遠卡住。
+          sudo security add-trusted-cert -d -r trustRoot -p codeSign \
+            -k /Library/Keychains/System.keychain "$CER"
           rm -f "$P12" "$CER"
           security find-identity -v -p codesigning "$KEYCHAIN"
 
