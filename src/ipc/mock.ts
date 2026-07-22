@@ -9,6 +9,7 @@ import type {
   Pet,
   PetMeta,
   SageIpc,
+  SemanticSnapshot,
   Settings,
   SkillMeta,
   StreamEvent,
@@ -34,13 +35,20 @@ export interface MockIpcOptions {
   settings?: Partial<Settings>;
   /** activeWindow results, cycled per call. Defaults to [null]. */
   windows?: (ActiveWindow | null)[];
-  /** Data URL returned by captureScreen. */
-  screenshot?: string;
+  /** Fields merged over DEFAULT_SNAPSHOT for semanticSnapshot results. */
+  snapshot?: Partial<SemanticSnapshot>;
   /**
-   * Simulate a blocklisted foreground window: captureScreen rejects with the
-   * same message capture.rs uses ("sensitive window").
+   * Simulate a blocklisted foreground window: semanticSnapshot rejects with
+   * the same message semantic.rs uses ("sensitive window").
    */
   sensitiveWindow?: boolean;
+  /**
+   * Simulate an unsupported platform / missing accessibility permission:
+   * semanticSnapshot rejects with this message.
+   */
+  semanticError?: string;
+  /** idle_seconds returned by activityState. Defaults to 0 (active user). */
+  idleSeconds?: number;
 }
 
 /** A skill as the mock stores it: contract SkillMeta plus its SKILL.md body. */
@@ -92,9 +100,16 @@ export const DEFAULT_AGENT_SCRIPT: AgentStreamEvent[][] = [
   ],
 ];
 
-// Smallest useful stand-in for a real capture; content never matters in tests.
-const TINY_JPEG_DATA_URL =
-  "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=";
+/** A plausible focused-window reading; individual fields rarely matter in tests. */
+export const DEFAULT_SNAPSHOT: SemanticSnapshot = {
+  app_name: "Visual Studio Code",
+  title: "gate.ts — Sage",
+  focused_role: "AXTextArea",
+  focused_value: "export function createBubbleGate(",
+  selection: "",
+  texts: ["gate.ts — Sage", "export function createBubbleGate("],
+  truncated: false,
+};
 
 // 1×1 transparent PNG — stand-in for a pet spritesheet in tests.
 const TINY_PNG_DATA_URL =
@@ -108,7 +123,7 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
   const pets = [...(options.pets ?? [])];
   const petAtlas = options.petAtlas ?? TINY_PNG_DATA_URL;
   const windows = options.windows ?? [null];
-  const screenshot = options.screenshot ?? TINY_JPEG_DATA_URL;
+  const snapshot: SemanticSnapshot = { ...DEFAULT_SNAPSHOT, ...(options.snapshot ?? {}) };
   let settings: Settings = { ...DEFAULT_SETTINGS, ...(options.settings ?? {}) };
   let streamCall = 0;
   let agentCall = 0;
@@ -239,17 +254,26 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       settings = { ...next };
     },
 
-    async captureScreen() {
-      calls.push({ command: "capture_screen" });
-      // Mirrors capture.rs: refuse outright when observation is off.
+    async semanticSnapshot() {
+      calls.push({ command: "semantic_snapshot" });
+      // Mirrors semantic.rs: refuse outright when observation is off.
       if (!settings.observe_enabled) {
         throw new Error("observation disabled");
       }
-      // Mirrors capture.rs's privacy gate for a blocklisted foreground window.
+      // Mirrors semantic.rs's privacy gate for a blocklisted foreground window.
       if (options.sensitiveWindow) {
         throw new Error("sensitive window");
       }
-      return screenshot;
+      // Unsupported platform / missing accessibility permission.
+      if (options.semanticError) {
+        throw new Error(options.semanticError);
+      }
+      return { ...snapshot, texts: [...snapshot.texts] };
+    },
+
+    async activityState() {
+      calls.push({ command: "activity_state" });
+      return { idle_seconds: options.idleSeconds ?? 0 };
     },
 
     async activeWindow() {

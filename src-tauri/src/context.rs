@@ -13,12 +13,17 @@ pub struct ActiveWindow {
     pub title: String,
 }
 
-/// Raw foreground window, unfiltered, plus the system window id (CGWindowID
-/// on macOS) — for the capture gate, so the window it photographs is exactly
-/// the window whose title just passed the blocklist.
+/// Raw foreground window, unfiltered, plus its process id and system window id
+/// (CGWindowID on macOS) — for the semantic-snapshot gate, so the window whose
+/// content gets read is exactly the window whose title just passed the
+/// blocklist. The ids feed the platform accessibility backends (Track M/W).
 pub struct FocusedWindow {
     pub app_name: String,
     pub title: String,
+    /// Owner pid — the macOS AX backend builds AXUIElementCreateApplication from it.
+    #[allow(dead_code)] // consumed by the platform semantic backends
+    pub process_id: u32,
+    #[allow(dead_code)] // consumed by the platform semantic backends
     pub window_id: Option<u32>,
 }
 
@@ -28,6 +33,7 @@ pub fn current_focused() -> Option<FocusedWindow> {
         .map(|w| FocusedWindow {
             app_name: w.app_name,
             title: w.title,
+            process_id: w.process_id as u32,
             window_id: w.window_id.parse().ok(),
         })
 }
@@ -49,7 +55,7 @@ pub fn active_window(app: tauri::AppHandle) -> Option<ActiveWindow> {
         {
             crate::privacy::SENSITIVE_TITLE.to_string()
         } else {
-            crate::privacy::sanitize_title(&w.title)
+            crate::privacy::sanitize_text(&w.title)
         };
         ActiveWindow {
             app_name: w.app_name,

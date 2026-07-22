@@ -5,10 +5,12 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   COMMANDS,
   type ActiveWindow,
+  type ActivityState,
   type AgentStreamEvent,
   type Pet,
   type PetMeta,
   type SageIpc,
+  type SemanticSnapshot,
   type Settings,
   type SkillMeta,
   type StreamEvent,
@@ -83,8 +85,12 @@ export const realIpc: SageIpc = {
     return invoke(COMMANDS.setSettings, { settings });
   },
 
-  captureScreen(): Promise<string> {
-    return invoke(COMMANDS.captureScreen);
+  semanticSnapshot(): Promise<SemanticSnapshot> {
+    return invoke(COMMANDS.semanticSnapshot);
+  },
+
+  activityState(): Promise<ActivityState> {
+    return invoke(COMMANDS.activityState);
   },
 
   activeWindow(): Promise<ActiveWindow | null> {

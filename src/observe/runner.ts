@@ -3,7 +3,7 @@
 // store + cross-window context broadcast + a time-driven bubble gate, honoring
 // the settings switch: observe_enabled off ⇒ sampling/capture stops entirely;
 // idle_chatter_enabled then keeps the companion talking on the same cadence
-// with a see-nothing prompt (no screenshots, no window titles).
+// with a see-nothing prompt (no window content, no window titles).
 import { useEffect, useRef } from "react";
 import {
   BUBBLE_EVENT,

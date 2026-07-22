@@ -28,9 +28,10 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
 futures-util = "0.3"
 tokio = { version = "1", features = ["process", "io-util", "rt", "macros"] }
-xcap = "0.4"
-image = { version = "0.25", default-features = false, features = ["jpeg"] }
 base64 = "0.22"
 active-win-pos-rs = "0.8"
 regex = "1"
+# dbus (not the default x11) on Linux: CI already ships libdbus-1-dev, and
+# Wayland sessions have no XScreenSaver extension anyway.
+user-idle = { version = "0.6", default-features = false, features = ["dbus"] }
 

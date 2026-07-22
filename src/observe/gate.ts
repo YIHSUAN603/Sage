@@ -1,10 +1,11 @@
 // S5.3 — Bubble gate: turns one observation into (maybe) a spoken remark.
 // Time-driven — the runner calls forceAsk on a random cadence; the gate just
-// keeps a short window-title history for context and, on each ask, captures a
-// screenshot (when available) + runs one observe-model call that must answer
-// with a short remark or the literal word SILENT.
+// keeps a short window-title history for context and, on each ask, runs one
+// observe-model call that must answer with a short remark or the literal word
+// SILENT. Interim state: title-only prompts — the semantic-snapshot content
+// (Track F) replaces the removed screenshot path.
 import i18n from "../i18n/index.ts";
-import type { ChatMessage, ContentPart, SageIpc } from "../ipc/contract.ts";
+import type { ChatMessage, SageIpc } from "../ipc/contract.ts";
 import { gateSystem } from "../store/persona.ts";
 import type { RunObserve } from "./runObserve.ts";
 
@@ -17,7 +18,7 @@ export interface WindowSample {
 }
 
 export interface GateOptions {
-  ipc: Pick<SageIpc, "captureScreen">;
+  ipc: Pick<SageIpc, "semanticSnapshot">;
   /** Run one observation turn against the active backend; null ⇒ nothing to say. */
   runObserve: RunObserve;
   /** A remark that passed the gate — show it as a bubble. */
@@ -25,11 +26,11 @@ export interface GateOptions {
   /** Samples kept for the recent-activity context. Default 60. */
   historyLimit?: number;
   /**
-   * Idle-chatter mode (observation off): never captures, never mentions
-   * window activity — the ask is a pure keep-them-company prompt.
+   * Idle-chatter mode (observation off): never reads window content, never
+   * mentions window activity — the ask is a pure keep-them-company prompt.
    */
   idle?: boolean;
-  /** Diagnostic trace of each ask (capture ok/fail, stream error, reply). */
+  /** Diagnostic trace of each ask (snapshot ok/fail, stream error, reply). */
   onDebug?(message: string): void;
 }
 
@@ -37,7 +38,7 @@ export interface BubbleGate {
   /** Feed one window sample into the recent-activity history (no ask). */
   record(sample: WindowSample): void;
   /**
-   * Capture + ask the model right now. Bubbles a genuine reply via onBubble;
+   * Ask the model right now. Bubbles a genuine reply via onBubble;
    * resolves with it, or null when the model stayed silent or the call failed.
    */
   forceAsk(reason?: string): Promise<string | null>;
@@ -55,20 +56,6 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
   /** One model round-trip; returns the remark or null (silent/error). */
   async function ask(reason: string): Promise<string | null> {
-    // Screenshot is best-effort: permission denied / observation just turned
-    // off falls back to the title-only prompt (PLAN privacy constraint).
-    // Idle mode never even tries — there is nothing to observe.
-    let screenshot: string | null = null;
-    if (!options.idle) {
-      try {
-        screenshot = await options.ipc.captureScreen();
-        debug(`截圖成功（${Math.round(screenshot.length / 1024)}KB data URL）`);
-      } catch (err) {
-        screenshot = null;
-        debug(`截圖失敗，退回純文字模式：${err instanceof Error ? err.message : String(err)}`);
-      }
-    }
-
     const recentLines = samples
       .slice(-8)
       .reverse()
@@ -85,20 +72,12 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
           i18n.t("gate.trigger", { ns: "prompt", reason }),
           i18n.t("gate.recentActivity", { ns: "prompt" }),
           recentLines,
-          i18n.t(screenshot ? "gate.withScreenshot" : "gate.noScreenshot", {
-            ns: "prompt",
-          }),
+          i18n.t("gate.noScreenshot", { ns: "prompt" }),
         ].join("\n");
 
-    const content: string | ContentPart[] = screenshot
-      ? [
-          { type: "text", text },
-          { type: "image_url", image_url: { url: screenshot } },
-        ]
-      : text;
     const messages: ChatMessage[] = [
       { role: "system", content: await gateSystem() },
-      { role: "user", content },
+      { role: "user", content: text },
     ];
 
     // The backend (OpenRouter / agent CLI) handles its own errors and returns

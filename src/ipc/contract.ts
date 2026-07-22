@@ -31,13 +31,13 @@ export interface Settings {
   api_key: string;
   /** Model used for chat + tool calling (must support `tools`). */
   chat_model: string;
-  /** Model used to observe the screen (must accept image input). May equal chat_model. */
+  /** Model used for observation (text-only prompts). May equal chat_model. */
   observe_model: string;
   /** Master switch for the observation subsystem. Off by default (privacy). */
   observe_enabled: boolean;
   /**
    * Proactive chatter while observation is OFF: the companion still speaks up
-   * on the proactive cadence, but sees nothing — no screenshots, no window
+   * on the proactive cadence, but sees nothing — no window content, no window
    * titles ever leave the machine. On by default (pure companionship).
    */
   idle_chatter_enabled: boolean;
@@ -46,15 +46,10 @@ export interface Settings {
   /**
    * User-added sensitive-window entries (app names / title keywords),
    * case-insensitive substrings. Extends the built-in blocklist in
-   * src-tauri/src/privacy.rs — blocklisted windows are never screenshotted
+   * src-tauri/src/privacy.rs — blocklisted windows' content is never read
    * and their titles are masked.
    */
   observe_blocklist: string[];
-  /**
-   * What capture_screen grabs: "window" (focused window only, default —
-   * background windows never enter the frame) or "screen" (full monitor).
-   */
-  observe_capture_mode: "window" | "screen";
   /**
    * Route observation requests only to OpenRouter providers that don't
    * retain/train on inputs (provider.data_collection = "deny"). May leave
@@ -90,7 +85,6 @@ export const DEFAULT_SETTINGS: Settings = {
   idle_chatter_enabled: true,
   observe_interval: 8,
   observe_blocklist: [],
-  observe_capture_mode: "window",
   observe_deny_data_collection: true,
   referer: "https://github.com/sage",
   language: "auto",
@@ -266,6 +260,33 @@ export interface ActiveWindow {
   title: string;
 }
 
+/**
+ * Structured text read from the focused window via the platform accessibility
+ * API (macOS AX / Windows UIA) — the screenshot's replacement. Every string is
+ * sanitized (privacy.rs) and size-capped before it leaves Rust. Empty string /
+ * empty array = the platform exposed nothing for that field.
+ */
+export interface SemanticSnapshot {
+  app_name: string;
+  title: string;
+  /** Accessibility role of the focused element (e.g. "AXTextArea", "Edit"). */
+  focused_role: string;
+  /** Text value of the focused element. */
+  focused_value: string;
+  /** Currently selected text, when the platform exposes it. */
+  selection: string;
+  /** Visible text fragments collected from the focused window, top-down. */
+  texts: string[];
+  /** True when the size caps trimmed the collected text. */
+  truncated: boolean;
+}
+
+/** Lightweight user-activity signal. No permissions required on any platform. */
+export interface ActivityState {
+  /** Seconds since the last keyboard/mouse input; 0 when undetectable. */
+  idle_seconds: number;
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -284,7 +305,8 @@ export const COMMANDS = {
   updatePetSage: "update_pet_sage",
   getSettings: "get_settings",
   setSettings: "set_settings",
-  captureScreen: "capture_screen",
+  semanticSnapshot: "semantic_snapshot",
+  activityState: "activity_state",
   activeWindow: "active_window",
 } as const;
 
@@ -346,8 +368,16 @@ export interface SageIpc {
   updatePetSage(id: string, persona: string, proactive: PetProactive): Promise<void>;
   getSettings(): Promise<Settings>;
   setSettings(settings: Settings): Promise<void>;
-  /** Capture the main screen as a JPEG data URL. Rejects when observe_enabled is false. */
-  captureScreen(): Promise<string>;
+  /**
+   * Read the focused window's text content via the platform accessibility API.
+   * Rejects with "observation disabled" when observe_enabled is false, with
+   * "sensitive window" for blocklisted windows, and with a guidance message
+   * when the platform is unsupported or a permission is missing — the caller
+   * falls back to title-only observation on any rejection.
+   */
+  semanticSnapshot(): Promise<SemanticSnapshot>;
+  /** Seconds since the last user input. Never rejects; unknown ⇒ 0. */
+  activityState(): Promise<ActivityState>;
   /** Frontmost app + window title, or null when unavailable. */
   activeWindow(): Promise<ActiveWindow | null>;
 }

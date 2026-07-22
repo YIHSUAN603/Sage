@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import i18n, { i18nReady } from "../src/i18n/index.ts";
-import type { ContentPart, Settings, StreamEvent } from "../src/ipc/contract.ts";
+import type { Settings, StreamEvent } from "../src/ipc/contract.ts";
 import { DEFAULT_SETTINGS } from "../src/ipc/contract.ts";
 import { createMockIpc, type MockIpc } from "../src/ipc/mock.ts";
 import { createRunObserve } from "../src/observe/runObserve.ts";
@@ -50,11 +50,10 @@ const sample = (app: string, title: string, at = 0): WindowSample => ({
   at,
 });
 
-test("forceAsk captures, asks the observe model with the screenshot, bubbles the reply", async () => {
+test("forceAsk asks the observe model with recent titles, bubbles the reply", async () => {
   const ipc = createMockIpc({
     settings: { observe_enabled: true },
     script: [reply("這個檔案卡了一陣子，要不要休息一下？")],
-    screenshot: "data:image/jpeg;base64,SHOT",
   });
   const { gate, bubbles } = createHarness(ipc);
 
@@ -70,14 +69,9 @@ test("forceAsk captures, asks the observe model with the screenshot, bubbles the
   assert.equal(req.model, "test/vision-model");
   assert.equal(req.messages[0].role, "system");
   assert.equal(req.messages[1].role, "user");
-  const parts = req.messages[1].content as ContentPart[];
-  assert.ok(Array.isArray(parts));
-  const image = parts.find((p) => p.type === "image_url");
-  assert.ok(image && image.type === "image_url");
-  assert.equal(image.image_url.url, "data:image/jpeg;base64,SHOT");
-  const text = parts.find((p) => p.type === "text");
-  assert.ok(text && text.type === "text");
-  assert.match(text.text, /Code/); // recent-activity context carries the sample
+  const content = req.messages[1].content;
+  assert.equal(typeof content, "string"); // prompts are text-only now
+  assert.match(content as string, /Code/); // recent-activity context carries the sample
 });
 
 test("SILENT reply: spends the ask but shows nothing", async () => {
@@ -93,11 +87,9 @@ test("SILENT reply: spends the ask but shows nothing", async () => {
   assert.equal(bubbles.length, 0);
 });
 
-test("screenshot failure falls back to a title-only ask", async () => {
-  // observe_enabled:false makes the mock's captureScreen reject, mirroring
-  // capture.rs (permission denied / observation just switched off).
+test("observation asks carry the title-only framing", async () => {
   const ipc = createMockIpc({
-    settings: { observe_enabled: false },
+    settings: { observe_enabled: true },
     script: [reply("看起來卡住了？")],
   });
   const { gate, bubbles } = createHarness(ipc);
@@ -108,27 +100,7 @@ test("screenshot failure falls back to a title-only ask", async () => {
   assert.equal(bubbles.length, 1);
   assert.equal(ipc.chatRequests.length, 1);
   const content = ipc.chatRequests[0].messages[1].content;
-  assert.equal(typeof content, "string"); // no image part at all
-  assert.match(content as string, /視窗標題/);
-});
-
-test("sensitive foreground window: screenshot refused, ask degrades to title-only", async () => {
-  // sensitiveWindow makes the mock's captureScreen reject with the same
-  // message capture.rs's privacy gate uses ("sensitive window").
-  const ipc = createMockIpc({
-    settings: { observe_enabled: true },
-    sensitiveWindow: true,
-    script: [reply("在忙正事呢。")],
-  });
-  const { gate, bubbles } = createHarness(ipc);
-
-  gate.record(sample("1Password", "[private]"));
-  await gate.forceAsk();
-
-  assert.equal(bubbles.length, 1);
-  assert.equal(ipc.chatRequests.length, 1);
-  const content = ipc.chatRequests[0].messages[1].content;
-  assert.equal(typeof content, "string"); // no image part ever reached the model
+  assert.equal(typeof content, "string");
   assert.match(content as string, /視窗標題/);
 });
 
@@ -148,10 +120,9 @@ test("stream errors and empty models stay silent", async () => {
   assert.equal(unconfigured.bubbles.length, 0);
 });
 
-test("agent-cli backend: codex observes title-only (screenshot stripped)", async () => {
+test("agent-cli backend: codex observes title-only", async () => {
   const ipc = createMockIpc({
     settings: { observe_enabled: true },
-    screenshot: "data:image/jpeg;base64,SHOT",
     agentScript: [[{ type: "delta", content: "需要幫忙嗎？" }, { type: "done" }]],
   });
   const { gate, bubbles } = createHarness(ipc, {
@@ -172,12 +143,10 @@ test("agent-cli backend: codex observes title-only (screenshot stripped)", async
   assert.equal(typeof ipc.agentRequests[0].messages[1].content, "string");
 });
 
-test("idle mode: no capture, no window activity — a pure companionship prompt", async () => {
-  // Screenshot IS available (observe on) — idle mode must not even try it.
+test("idle mode: no window activity — a pure companionship prompt", async () => {
   const ipc = createMockIpc({
     settings: { observe_enabled: true },
     script: [reply("嗨嗨，工作順利嗎？")],
-    screenshot: "data:image/jpeg;base64,SHOT",
   });
   const { gate, bubbles } = createHarness(ipc, {}, true);
 
@@ -188,10 +157,10 @@ test("idle mode: no capture, no window activity — a pure companionship prompt"
   assert.equal(bubbles.length, 1);
   assert.equal(ipc.chatRequests.length, 1);
   const content = ipc.chatRequests[0].messages[1].content;
-  assert.equal(typeof content, "string"); // no image part ever attached
+  assert.equal(typeof content, "string");
   assert.match(content as string, /看不到使用者的畫面/); // the see-nothing framing
   assert.doesNotMatch(content as string, /secret-project/); // recorded titles never leak
-  assert.doesNotMatch(content as string, /視窗標題/); // not the screenshot-failure fallback
+  assert.doesNotMatch(content as string, /視窗標題/); // not the observation framing
 });
 
 test("reset clears the recent-activity history", async () => {
@@ -205,8 +174,7 @@ test("reset clears the recent-activity history", async () => {
   gate.reset();
   await gate.forceAsk();
 
-  const content = ipc.chatRequests[0].messages[1].content as ContentPart[];
-  const text = content.find((p) => p.type === "text");
-  assert.ok(text && text.type === "text");
-  assert.doesNotMatch(text.text, /Slack/); // history was dropped
+  const content = ipc.chatRequests[0].messages[1].content;
+  assert.equal(typeof content, "string");
+  assert.doesNotMatch(content as string, /Slack/); // history was dropped
 });

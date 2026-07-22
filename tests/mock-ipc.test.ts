@@ -69,14 +69,35 @@ test("settings default to DEFAULT_SETTINGS and round-trip through set/get", asyn
   assert.deepEqual(await ipc.getSettings(), next);
 });
 
-test("captureScreen rejects while observation is disabled", async () => {
+test("semanticSnapshot rejects while observation is disabled", async () => {
   const ipc = createMockIpc();
-  await assert.rejects(() => ipc.captureScreen(), /observation disabled/);
+  await assert.rejects(() => ipc.semanticSnapshot(), /observation disabled/);
 });
 
-test("captureScreen returns a JPEG data URL when observation is enabled", async () => {
-  const ipc = createMockIpc({ settings: { observe_enabled: true } });
-  assert.match(await ipc.captureScreen(), /^data:image\/jpeg;base64,/);
+test("semanticSnapshot rejects for a sensitive foreground window", async () => {
+  const ipc = createMockIpc({
+    settings: { observe_enabled: true },
+    sensitiveWindow: true,
+  });
+  await assert.rejects(() => ipc.semanticSnapshot(), /sensitive window/);
+});
+
+test("semanticSnapshot merges overrides over the default snapshot", async () => {
+  const ipc = createMockIpc({
+    settings: { observe_enabled: true },
+    snapshot: { title: "報告.docx — Word", texts: ["第三季營收"] },
+  });
+  const snap = await ipc.semanticSnapshot();
+  assert.equal(snap.title, "報告.docx — Word");
+  assert.deepEqual(snap.texts, ["第三季營收"]);
+  assert.equal(snap.truncated, false); // untouched fields keep defaults
+});
+
+test("activityState reports the configured idle seconds (default 0)", async () => {
+  assert.deepEqual(await createMockIpc().activityState(), { idle_seconds: 0 });
+  assert.deepEqual(await createMockIpc({ idleSeconds: 660 }).activityState(), {
+    idle_seconds: 660,
+  });
 });
 
 test("activeWindow cycles through the scripted window sequence", async () => {

@@ -28,7 +28,7 @@ pub struct Settings {
     /// Model used for chat + tool calling (must support `tools`).
     #[serde(default)]
     pub chat_model: String,
-    /// Model used to observe the screen (must accept image input). May equal chat_model.
+    /// Model used for observation (text-only prompts). May equal chat_model.
     #[serde(default)]
     pub observe_model: String,
     /// Master switch for the observation subsystem. Off by default (privacy).
@@ -45,10 +45,6 @@ pub struct Settings {
     /// case-insensitive substrings. Extends privacy.rs's built-in blocklist.
     #[serde(default)]
     pub observe_blocklist: Vec<String>,
-    /// What capture_screen grabs: "window" (focused window only, default —
-    /// background windows never enter the frame) or "screen" (full monitor).
-    #[serde(default = "default_capture_mode")]
-    pub observe_capture_mode: String,
     /// Route observation requests only to OpenRouter providers that don't
     /// retain/train on inputs (provider.data_collection = "deny").
     #[serde(default = "default_true")]
@@ -82,10 +78,6 @@ fn default_proactive_cooldown() -> f64 {
 
 fn default_interval() -> u32 {
     8
-}
-
-fn default_capture_mode() -> String {
-    "window".into()
 }
 
 fn default_true() -> bool {
@@ -123,7 +115,6 @@ impl Default for Settings {
             idle_chatter_enabled: true,
             observe_interval: default_interval(),
             observe_blocklist: Vec::new(),
-            observe_capture_mode: default_capture_mode(),
             observe_deny_data_collection: true,
             referer: "https://github.com/sage".into(),
             language: default_language(),

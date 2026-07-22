@@ -678,23 +678,6 @@ export function SettingsDialog({
           <span className="field-hint">{t("settings.idleChatterHint")}</span>
         </div>
 
-        <label className="field">
-          <span>{t("settings.captureMode")}</span>
-          <select
-            value={draft.observe_capture_mode}
-            disabled={!draft.observe_enabled}
-            onChange={(e) =>
-              patch({
-                observe_capture_mode: e.currentTarget
-                  .value as Settings["observe_capture_mode"],
-              })
-            }
-          >
-            <option value="window">{t("settings.captureModeWindow")}</option>
-            <option value="screen">{t("settings.captureModeScreen")}</option>
-          </select>
-        </label>
-
         {!useAgentCli && (
           <div className="field">
             <label className="switch-label">

@@ -1,5 +1,5 @@
 // Privacy guards for the observation subsystem: a sensitive-window blocklist
-// (skip screenshots, hide titles) and title sanitization (redact emails, long
+// (skip content reads, hide titles) and text sanitization (redact emails, long
 // digit runs, API tokens) applied before anything leaves the machine.
 use regex::Regex;
 use std::sync::LazyLock;
@@ -56,10 +56,11 @@ static TOKEN: LazyLock<Regex> = LazyLock::new(|| {
         .unwrap()
 });
 
-/// Redact emails, long digit runs, and token-looking strings from a window
-/// title before it is stored, broadcast, or sent to a model.
-pub fn sanitize_title(title: &str) -> String {
-    let t = EMAIL.replace_all(title, "***");
+/// Redact emails, long digit runs, and token-looking strings from any text
+/// (window titles, semantic-snapshot fragments) before it is stored,
+/// broadcast, or sent to a model.
+pub fn sanitize_text(text: &str) -> String {
+    let t = EMAIL.replace_all(text, "***");
     let t = TOKEN.replace_all(&t, "***");
     DIGIT_RUN.replace_all(&t, "***").into_owned()
 }
@@ -96,29 +97,29 @@ mod tests {
     #[test]
     fn sanitize_redacts_emails() {
         assert_eq!(
-            sanitize_title("Re: quote — alice.wu@example.com.tw — Mail"),
+            sanitize_text("Re: quote — alice.wu@example.com.tw — Mail"),
             "Re: quote — *** — Mail"
         );
     }
 
     #[test]
     fn sanitize_redacts_long_digit_runs() {
-        assert_eq!(sanitize_title("Card 4111 1111 1111 1111 due"), "Card *** due");
-        assert_eq!(sanitize_title("Call 0912-345-678"), "Call ***");
+        assert_eq!(sanitize_text("Card 4111 1111 1111 1111 due"), "Card *** due");
+        assert_eq!(sanitize_text("Call 0912-345-678"), "Call ***");
         // Short numbers survive (versions, line numbers).
-        assert_eq!(sanitize_title("Sage v0.3.1 — build 42"), "Sage v0.3.1 — build 42");
+        assert_eq!(sanitize_text("Sage v0.3.1 — build 42"), "Sage v0.3.1 — build 42");
     }
 
     #[test]
     fn sanitize_redacts_tokens() {
-        assert_eq!(sanitize_title("env: sk-or-v1-abcdef1234567890"), "env: ***");
-        assert_eq!(sanitize_title("ghp_ABCDEFGHIJKLMNOP — token"), "*** — token");
-        assert_eq!(sanitize_title("jwt eyJhbGciOiJIUzI1NiJ9.x"), "jwt ***");
+        assert_eq!(sanitize_text("env: sk-or-v1-abcdef1234567890"), "env: ***");
+        assert_eq!(sanitize_text("ghp_ABCDEFGHIJKLMNOP — token"), "*** — token");
+        assert_eq!(sanitize_text("jwt eyJhbGciOiJIUzI1NiJ9.x"), "jwt ***");
     }
 
     #[test]
     fn sanitize_leaves_ordinary_titles_alone() {
         let t = "capture.rs — Sage — Visual Studio Code";
-        assert_eq!(sanitize_title(t), t);
+        assert_eq!(sanitize_text(t), t);
     }
 }

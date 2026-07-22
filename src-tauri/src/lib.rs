@@ -1,7 +1,8 @@
+mod activity;
 mod agent_cli;
-mod capture;
 mod context;
 mod llm;
+mod semantic;
 mod pets;
 mod privacy;
 mod settings;
@@ -80,7 +81,8 @@ pub fn run() {
             llm::chat_stream,
             agent_cli::agent_stream,
             agent_cli::check_agent_cli,
-            capture::capture_screen,
+            semantic::semantic_snapshot,
+            activity::activity_state,
             context::active_window
         ])
         .run(tauri::generate_context!())
