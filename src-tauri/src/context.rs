@@ -13,15 +13,32 @@ pub struct ActiveWindow {
     pub title: String,
 }
 
-/// Raw foreground window, unfiltered — for internal callers (capture gate)
-/// that need the real title to match the blocklist.
-pub fn current() -> Option<ActiveWindow> {
+/// Raw foreground window, unfiltered, plus the system window id (CGWindowID
+/// on macOS) — for the capture gate, so the window it photographs is exactly
+/// the window whose title just passed the blocklist.
+pub struct FocusedWindow {
+    pub app_name: String,
+    pub title: String,
+    pub window_id: Option<u32>,
+}
+
+pub fn current_focused() -> Option<FocusedWindow> {
     active_win_pos_rs::get_active_window()
         .ok()
-        .map(|w| ActiveWindow {
+        .map(|w| FocusedWindow {
             app_name: w.app_name,
             title: w.title,
+            window_id: w.window_id.parse().ok(),
         })
+}
+
+/// Raw foreground window, unfiltered — for internal callers
+/// that need the real title to match the blocklist.
+pub fn current() -> Option<ActiveWindow> {
+    current_focused().map(|w| ActiveWindow {
+        app_name: w.app_name,
+        title: w.title,
+    })
 }
 
 #[tauri::command]

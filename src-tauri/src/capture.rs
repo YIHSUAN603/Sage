@@ -27,7 +27,10 @@ pub fn capture_screen(app: tauri::AppHandle) -> Result<String, String> {
     // Privacy gate: never photograph a sensitive foreground window. The
     // frontend gate falls back to title-only mode on any capture error, and
     // active_window() masks the title of blocklisted windows on its own.
-    if let Some(w) = crate::context::current() {
+    // One lookup serves both the gate and the capture target, so the window
+    // that passed the blocklist is the window that gets photographed.
+    let focused = crate::context::current_focused();
+    if let Some(w) = &focused {
         if crate::privacy::is_sensitive(&w.app_name, &w.title, &settings.observe_blocklist) {
             // Message must match src/ipc/mock.ts.
             return Err("sensitive window".into());
@@ -40,7 +43,8 @@ pub fn capture_screen(app: tauri::AppHandle) -> Result<String, String> {
         // Default "window": only the focused window enters the frame, so
         // background windows (messages, banking tabs…) never leak. Falls back
         // to the full screen when no focused window is found (e.g. desktop).
-        capture_focused_window().or_else(|_| capture_primary_screen())?
+        capture_focused_window(focused.as_ref().and_then(|w| w.window_id))
+            .or_else(|_| capture_primary_screen())?
     };
 
     // Downscale proportionally to width <= 1024 (saves tokens, lowers detail
@@ -62,11 +66,16 @@ pub fn capture_screen(app: tauri::AppHandle) -> Result<String, String> {
     Ok(format!("data:image/jpeg;base64,{b64}"))
 }
 
-fn capture_focused_window() -> Result<image::RgbaImage, String> {
+/// Capture the focused window: the exact window id the foreground probe
+/// reported (the one the blocklist just cleared). xcap's own is_focused()
+/// only compares owner PIDs — every window of the frontmost app matches, and
+/// z-order then picks whichever panel floats on top — so it serves only as a
+/// fallback when the id is missing or stale.
+fn capture_focused_window(window_id: Option<u32>) -> Result<image::RgbaImage, String> {
     let windows = xcap::Window::all().map_err(|e| format!("{MACOS_PERMISSION_HINT}（{e}）"))?;
-    let focused = windows
-        .into_iter()
-        .find(|w| w.is_focused().unwrap_or(false))
+    let focused = window_id
+        .and_then(|id| windows.iter().find(|w| w.id().ok() == Some(id)))
+        .or_else(|| windows.iter().find(|w| w.is_focused().unwrap_or(false)))
         .ok_or_else(|| "no focused window".to_string())?;
     focused
         .capture_image()
