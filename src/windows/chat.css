@@ -509,3 +509,121 @@
   opacity: 0.6;
   cursor: default;
 }
+
+/* --- Memory manager + archive browser (0.4) --- */
+.field-hint-error {
+  color: var(--error-fg);
+}
+
+.section-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.record-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.record-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border: 1px solid var(--bubble-border);
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: var(--card-bg);
+}
+
+.record-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.record-meta strong {
+  font-size: 0.82rem;
+  color: var(--ink);
+  word-break: break-word;
+}
+
+.record-meta span {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.record-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.record-actions button {
+  border: 1.5px solid var(--bubble-border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  background: var(--input-bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.record-actions button.primary {
+  background: var(--leaf-deep);
+  border-color: var(--leaf-deep);
+  color: var(--on-accent);
+}
+
+.record-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.record-danger {
+  align-self: flex-start;
+  border: 1.5px solid var(--bubble-border);
+  border-radius: 9px;
+  padding: 5px 11px;
+  background: var(--input-bg);
+  color: var(--error-fg);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.record-danger.armed {
+  background: var(--error-fg);
+  border-color: var(--error-fg);
+  color: var(--on-accent);
+}
+
+.archive-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 180px;
+  overflow-y: auto;
+  border-top: 1px dashed var(--bubble-border);
+  padding-top: 6px;
+}
+
+.archive-line {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+  word-break: break-word;
+}
+
+.archive-line strong {
+  color: var(--ink);
+}

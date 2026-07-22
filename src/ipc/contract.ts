@@ -74,6 +74,13 @@ export interface Settings {
   proactive_cooldown_minutes: number;
   /** Max proactive bubbles per rolling hour; 0 = unlimited. Pet overrides. */
   proactive_max_per_hour: number;
+  /**
+   * Master switch for long-term memory: the memory index injected into each
+   * request, the save/recall/forget tools, and startup conversation
+   * persistence. On by default — files never leave the machine and memory
+   * content travels the same LLM path chat content already does.
+   */
+  memory_enabled: boolean;
 }
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
@@ -97,6 +104,7 @@ export const DEFAULT_SETTINGS: Settings = {
   custom_persona: "",
   proactive_cooldown_minutes: 2,
   proactive_max_per_hour: 0,
+  memory_enabled: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -221,6 +229,35 @@ export interface SkillMeta {
 }
 
 // ---------------------------------------------------------------------------
+// Memory — mirrors src-tauri/src/memory.rs. A memory is one markdown file under
+// <app_config_dir>/memory/ with the same frontmatter format as skills
+// (name + description), body = the fact. A lightweight index (one line per
+// memory) rides into each request; full bodies load on demand via recall_memory
+// — the same catalog-plus-lazy-load pattern as use_skill.
+// ---------------------------------------------------------------------------
+
+export interface MemoryMeta {
+  name: string;
+  description: string;
+}
+
+// ---------------------------------------------------------------------------
+// Sessions — mirrors src-tauri/src/sessions.rs. The single continuous
+// conversation is persisted to <app_config_dir>/session.json; "clear" archives
+// it to <app_config_dir>/sessions/<id>.json (browsable/deletable from Settings).
+// Conversation payloads travel as opaque ChatMessage[] (Rust stores raw JSON).
+// ---------------------------------------------------------------------------
+
+export interface ArchiveMeta {
+  /** Archive id = filename stem (a sortable timestamp). */
+  id: string;
+  /** When the archive was created (derived from id or file mtime). */
+  saved_at: string;
+  /** Number of messages in the archived conversation (0 if unparseable). */
+  message_count: number;
+}
+
+// ---------------------------------------------------------------------------
 // Pets (companions) — mirrors src-tauri/src/pets.rs. A pet is a folder under
 // <app_config_dir>/pets/ following the Codex pet contract that OpenAI's
 // `hatch-pet` skill emits: a pet.json (id / displayName / description /
@@ -303,6 +340,16 @@ export const COMMANDS = {
   toolReadFile: "tool_read_file",
   listSkills: "list_skills",
   readSkill: "read_skill",
+  listMemories: "list_memories",
+  readMemory: "read_memory",
+  saveMemory: "save_memory",
+  forgetMemory: "forget_memory",
+  loadSession: "load_session",
+  saveSession: "save_session",
+  archiveSession: "archive_session",
+  listArchives: "list_archives",
+  readArchive: "read_archive",
+  deleteArchive: "delete_archive",
   listPets: "list_pets",
   readPet: "read_pet",
   readPetAtlas: "read_pet_atlas",
@@ -351,6 +398,34 @@ export interface SageIpc {
   listSkills(): Promise<SkillMeta[]>;
   /** One skill's SKILL.md body (frontmatter stripped). Rejects when the name is unknown. */
   readSkill(name: string): Promise<string>;
+  /** Saved memories' metadata (scans <config_dir>/memory/, creating it if needed). */
+  listMemories(): Promise<MemoryMeta[]>;
+  /** One memory's body (frontmatter stripped). Rejects when the name is unknown. */
+  readMemory(name: string): Promise<string>;
+  /**
+   * Write (or overwrite) one memory. The filename is a safe slug derived from
+   * `name`; an existing memory with the same parsed `name` is overwritten
+   * (used for edits). Rejects when `name` has no slug-able characters.
+   */
+  saveMemory(name: string, description: string, body: string): Promise<void>;
+  /** Delete one memory by exact parsed name. Rejects when the name is unknown. */
+  forgetMemory(name: string): Promise<void>;
+  /** The persisted continuous conversation (empty array when none saved). */
+  loadSession(): Promise<ChatMessage[]>;
+  /** Overwrite the persisted conversation. */
+  saveSession(messages: ChatMessage[]): Promise<void>;
+  /**
+   * Archive the current conversation to <config>/sessions/ and clear it.
+   * Resolves with the new archive's metadata, or null when there was nothing
+   * to archive (no saved conversation, or an empty one).
+   */
+  archiveSession(): Promise<ArchiveMeta | null>;
+  /** Archived conversations' metadata, newest first. */
+  listArchives(): Promise<ArchiveMeta[]>;
+  /** One archived conversation's messages. Rejects when the id is unknown. */
+  readArchive(id: string): Promise<ChatMessage[]>;
+  /** Delete one archive by id. Rejects when the id is unknown. */
+  deleteArchive(id: string): Promise<void>;
   /** Installed pets' metadata (scans <config_dir>/pets/, creating it if needed). */
   listPets(): Promise<PetMeta[]>;
   /** One pet's fully parsed manifest. Rejects when the id is unknown. */

@@ -72,6 +72,10 @@ pub struct Settings {
     /// `sage.proactive.maxPerHour` overrides this.
     #[serde(default)]
     pub proactive_max_per_hour: u32,
+    /// Master switch for long-term memory (index injection, save/recall/forget
+    /// tools, conversation persistence). On by default.
+    #[serde(default = "default_true")]
+    pub memory_enabled: bool,
 }
 
 fn default_proactive_cooldown() -> f64 {
@@ -124,6 +128,7 @@ impl Default for Settings {
             custom_persona: String::new(),
             proactive_cooldown_minutes: default_proactive_cooldown(),
             proactive_max_per_hour: 0,
+            memory_enabled: true,
         }
     }
 }

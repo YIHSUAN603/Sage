@@ -24,6 +24,7 @@ export default {
     },
     chat: {
       settingsTitle: "设置",
+      newConversation: "开启新对话（把当前这则封存起来）",
       hide: "收起",
       dismissError: "关闭错误信息",
       permissionToggle: "工具权限：{{level}}（点击切换）",
@@ -99,6 +100,25 @@ export default {
       proactivePetHint: "留空＝沿用全局设置（{{cooldown}} 分钟、每小时 {{max}}）。",
       proactiveUnlimited: "不限",
       petSageError: "写回宠物的 pet.json 失败——个性与频率未保存。",
+      memoryEnable: "长期记忆",
+      memoryHint:
+        "开启后，伙伴会跨对话记住一些持久的事实，并能自行回想、记下或忘记。所有内容都只以文件存在你的机器上。",
+      memoryManager: "记忆管理",
+      memoryEmpty: "还没有记住任何事。",
+      memoryEdit: "编辑",
+      memoryDelete: "删除",
+      memoryDeleteAll: "全部忘记",
+      memoryDeleteAllConfirm: "再点一次确认",
+      memorySave: "保存",
+      memoryError: "记忆操作出了点问题——请再试一次。",
+      memoryDescPlaceholder: "一句话摘要",
+      memoryBodyPlaceholder: "要记住的完整内容",
+      archives: "封存的对话",
+      archivesEmpty: "没有封存的对话。",
+      archivesError: "封存加载失败——请再试一次。",
+      archiveView: "查看",
+      archiveDelete: "删除",
+      archiveMessages: "{{count}} 条消息",
       privacyNote:
         "观察开启后，Sage 会定期读取当前窗口的标题与屏幕文字（经系统辅助功能接口），永不截取屏幕图像。敏感窗口（密码管理器、登录页、无痕…）永不读取内容、标题会遮蔽，标题中的 email、卡号、密钥也会先净化。内容只在内存中处理、发送后即丢弃，不会存盘；关闭观察即完全停止一切读取与上传。观察开启而主动搭话关闭时，观察内容只在你主动聊天时作为上下文使用。",
       cancel: "取消",
@@ -152,6 +172,12 @@ export default {
       focused: "焦点组件：{{detail}}",
       selection: "选中文字：{{text}}",
       truncated: "（屏幕文字过长，已截断）",
+    },
+    memory: {
+      index: {
+        intro:
+          "（这些是你记得关于用户的事——需要时自然地带上，别逐条复述。）",
+      },
     },
     context: {
       intro:
