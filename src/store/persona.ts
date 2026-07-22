@@ -31,10 +31,21 @@ export async function personaIdentity(): Promise<string> {
   return desc ? `${base}\n${desc}` : base;
 }
 
-/** The proactive-gate system prompt = persona identity + the gate protocol. */
+/** Stage-2 (compose) system prompt = persona identity + the companion gate protocol. */
 export async function gateSystem(): Promise<string> {
   const persona = await personaIdentity();
   return `${persona}\n${i18n.t("gate.protocol", { ns: "prompt" })}`;
+}
+
+/**
+ * Stage-1 (assess / "read the room") system prompt = same persona identity, but
+ * the lighter assess protocol: judge whether now is a good moment to chime in
+ * (and in what register) rather than actually speaking. Shares the persona so
+ * the judgment stays in character.
+ */
+export async function assessSystem(): Promise<string> {
+  const persona = await personaIdentity();
+  return `${persona}\n${i18n.t("gate.assessProtocol", { ns: "prompt" })}`;
 }
 
 /** Effective proactive tuning for the observe loop. */

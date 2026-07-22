@@ -1,13 +1,23 @@
-// S5.3 — Bubble gate: turns one observation into (maybe) a spoken remark.
-// Time-driven — the runner calls forceAsk on a random cadence; the gate keeps
-// a short window-title history for context and, on each ask, reads a semantic
-// snapshot of the focused window (accessibility text — the screenshot's
-// replacement) + runs one observe-model call that must answer with a short
-// remark or the literal word SILENT. Snapshot failures (permission missing,
-// sensitive window, observation just off) fall back to title-only prompts.
+// S5.3 — Bubble gate: turns one observation into (maybe) a companionable remark.
+// Time-driven — the runner calls forceAsk on a random cadence. The gate is a
+// two-stage "read the room, then speak" pipeline so proactive chatter feels
+// like a companion instead of a blind single-shot:
+//
+//   [prefilter | no LLM]  same window as last ask AND we just spoke ⇒ skip
+//                         (never keep nattering at an unchanged screen)
+//   [stage 1  | cheap LLM, no snapshot]  assess: is now a good moment to chime
+//                         in, and in what register? ⇒ SILENT or a focus hint
+//   [stage 2  | LLM + snapshot]  compose: read the semantic snapshot (screen
+//                         text — the screenshot's replacement) and say one line
+//                         in character, or veto with SILENT.
+//
+// A short window-title history feeds the context; recently-said remarks feed
+// both stages so the companion doesn't repeat itself or get monotonous. Idle
+// mode (observation off) skips the prefilter/stage-1/snapshot entirely — it's a
+// pure keep-them-company prompt with nothing to observe.
 import i18n from "../i18n/index.ts";
 import type { ChatMessage, SageIpc, SemanticSnapshot } from "../ipc/contract.ts";
-import { gateSystem } from "../store/persona.ts";
+import { assessSystem, gateSystem } from "../store/persona.ts";
 import type { RunObserve } from "./runObserve.ts";
 
 /** One active-window observation, kept for the ask prompt's recent-activity list. */
@@ -31,7 +41,7 @@ export interface GateOptions {
    * mentions window activity — the ask is a pure keep-them-company prompt.
    */
   idle?: boolean;
-  /** Diagnostic trace of each ask (snapshot ok/fail, stream error, reply). */
+  /** Diagnostic trace of each ask (assess/snapshot/stream error/reply). */
   onDebug?(message: string): void;
 }
 
@@ -43,9 +53,12 @@ export interface BubbleGate {
    * resolves with it, or null when the model stayed silent or the call failed.
    */
   forceAsk(reason?: string): Promise<string | null>;
-  /** Drop history (observation was turned off/on). */
+  /** Drop history + session memory (observation was turned off/on). */
   reset(): void;
 }
+
+/** How many recent remarks to feed back into the prompts (repetition guard). */
+const RECENT_REMARKS_LIMIT = 5;
 
 /**
  * Render a semantic snapshot as prompt lines, skipping empty fields — the
@@ -78,11 +91,85 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
   let samples: WindowSample[] = [];
   let asking = false;
+  // Session-only memory (never persisted) so the companion knows what it just
+  // said (avoid repeats / monotony) and which window it last spoke about.
+  let recentRemarks: string[] = [];
+  let lastAskWindow: WindowSample | null = null;
 
   const debug = options.onDebug ?? (() => {});
 
-  /** One model round-trip; returns the remark or null (silent/error). */
-  async function ask(reason: string): Promise<string | null> {
+  const currentWindow = (): WindowSample | null =>
+    samples.length > 0 ? samples[samples.length - 1] : null;
+
+  const windowLabel = (w: WindowSample): string => `${w.app_name} — ${w.title}`;
+
+  const recentActivityLines = (): string =>
+    samples
+      .slice(-8)
+      .reverse()
+      .map((s) => `- ${windowLabel(s)}`)
+      .join("\n");
+
+  /** The "you recently said…" repetition-guard block, or null when empty. */
+  const recentlySaidBlock = (): string | null => {
+    if (recentRemarks.length === 0) return null;
+    const lines = recentRemarks.map((r) => `- ${r}`).join("\n");
+    return i18n.t("gate.recentlySaid", { ns: "prompt", lines });
+  };
+
+  /** A one-line description of what changed since the last ask, or null. */
+  const changeSince = (prev: WindowSample | null, now: WindowSample | null): string | null => {
+    if (!prev || !now) return null;
+    if (prev.app_name === now.app_name && prev.title === now.title) {
+      return i18n.t("gate.noChange", { ns: "prompt" });
+    }
+    return i18n.t("gate.whatChanged", {
+      ns: "prompt",
+      from: windowLabel(prev),
+      to: windowLabel(now),
+    });
+  };
+
+  /**
+   * Stage 1 — read the room. Cheap: recent titles + what changed + what we
+   * recently said, no accessibility snapshot. Returns a focus hint (what to
+   * notice + suggested register) or null (SILENT / not the moment / error).
+   */
+  async function assess(prev: WindowSample | null): Promise<string | null> {
+    const change = changeSince(prev, currentWindow());
+    const said = recentlySaidBlock();
+    const text = [
+      i18n.t("gate.assessInstruction", { ns: "prompt" }),
+      i18n.t("gate.recentActivity", { ns: "prompt" }),
+      recentActivityLines(),
+      change,
+      said,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join("\n");
+
+    const messages: ChatMessage[] = [
+      { role: "system", content: await assessSystem() },
+      { role: "user", content: text },
+    ];
+
+    const raw = await options.runObserve(messages, debug);
+    if (raw === null) return null;
+    const reply = raw.trim();
+    if (!reply || reply.toUpperCase() === "SILENT") {
+      debug(reply ? "Stage1 讀空氣：現在不適合插話（SILENT）" : "Stage1 回覆是空的");
+      return null;
+    }
+    debug(`Stage1 讀空氣：${reply}`);
+    return reply;
+  }
+
+  /**
+   * Stage 2 — compose the actual remark, in character. Reads the best-effort
+   * semantic snapshot (observe mode only), carries the stage-1 focus hint and
+   * the repetition guard. Returns the remark or null (SILENT / error).
+   */
+  async function compose(reason: string, focus: string | null): Promise<string | null> {
     // The semantic snapshot is best-effort: a missing accessibility
     // permission, a sensitive window, or observation just turned off falls
     // back to the title-only prompt (PLAN privacy constraint). Idle mode
@@ -100,26 +187,27 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       }
     }
 
-    const recentLines = samples
-      .slice(-8)
-      .reverse()
-      .map((s) => `- ${s.app_name} — ${s.title}`)
-      .join("\n");
+    const said = recentlySaidBlock();
     // Prompt strings resolve at ask time so a language switch takes effect
     // immediately (the reply language follows the UI language).
-    const text = options.idle
+    const lines: (string | null)[] = options.idle
       ? [
           i18n.t("gate.trigger", { ns: "prompt", reason }),
           i18n.t("gate.idleContext", { ns: "prompt" }),
-        ].join("\n")
+          said,
+        ]
       : [
           i18n.t("gate.trigger", { ns: "prompt", reason }),
+          focus ? i18n.t("gate.focus", { ns: "prompt", focus }) : null,
           i18n.t("gate.recentActivity", { ns: "prompt" }),
-          recentLines,
-          ...(snapshot
-            ? [i18n.t("gate.withSemantic", { ns: "prompt" }), renderSnapshot(snapshot)]
-            : [i18n.t("gate.titleOnly", { ns: "prompt" })]),
-        ].join("\n");
+          recentActivityLines(),
+          snapshot
+            ? i18n.t("gate.withSemantic", { ns: "prompt" })
+            : i18n.t("gate.titleOnly", { ns: "prompt" }),
+          snapshot ? renderSnapshot(snapshot) : null,
+          said,
+        ];
+    const text = lines.filter((line): line is string => Boolean(line)).join("\n");
 
     const messages: ChatMessage[] = [
       { role: "system", content: await gateSystem() },
@@ -140,6 +228,39 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     return reply;
   }
 
+  /** The full two-stage pipeline for one ask. */
+  async function ask(reason: string): Promise<string | null> {
+    const now = currentWindow();
+
+    // Prefilter (observe mode only): don't keep nattering at a screen that
+    // hasn't changed when we already spoke recently.
+    if (
+      !options.idle &&
+      lastAskWindow &&
+      now &&
+      lastAskWindow.app_name === now.app_name &&
+      lastAskWindow.title === now.title &&
+      recentRemarks.length > 0
+    ) {
+      debug("畫面未變且剛說過，跳過（不打任何 LLM）");
+      return null;
+    }
+
+    const prev = lastAskWindow;
+    lastAskWindow = now;
+
+    // Stage 1 assess (observe mode only). Idle has nothing to read the room
+    // with, so it goes straight to a companionship line.
+    let focus: string | null = null;
+    if (!options.idle) {
+      focus = await assess(prev);
+      if (focus === null) return null;
+    }
+
+    // Stage 2 compose.
+    return compose(reason, focus);
+  }
+
   return {
     record(sample) {
       samples = [...samples, sample].slice(-historyLimit);
@@ -150,7 +271,10 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       asking = true;
       try {
         const reply = await ask(reason);
-        if (reply) options.onBubble(reply, reason);
+        if (reply) {
+          options.onBubble(reply, reason);
+          recentRemarks = [...recentRemarks, reply].slice(-RECENT_REMARKS_LIMIT);
+        }
         return reply;
       } finally {
         asking = false;
@@ -160,6 +284,8 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     reset() {
       samples = [];
       asking = false;
+      recentRemarks = [];
+      lastAskWindow = null;
     },
   };
 }

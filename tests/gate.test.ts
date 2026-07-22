@@ -20,6 +20,11 @@ function reply(text: string): StreamEvent[] {
   ];
 }
 
+// The gate is two-stage in observe mode: stage 1 (assess / "read the room")
+// then stage 2 (compose). Scripts feed the two calls in order — a non-SILENT
+// stage-1 reply is the focus hint that unlocks stage 2.
+const ASSESS_OK = reply("卡在同一個檔案一陣子了，用打氣的語氣");
+
 interface Harness {
   bubbles: { text: string; reason: string }[];
 }
@@ -58,10 +63,10 @@ const observing = (extra: MockIpcOptions = {}): MockIpcOptions => ({
   ...extra,
 });
 
-test("semantic snapshot success: the prompt carries the screen text", async () => {
+test("semantic snapshot success: stage 2 prompt carries the screen text", async () => {
   const ipc = createMockIpc(
     observing({
-      script: [reply("這個檔案卡了一陣子，要不要休息一下？")],
+      script: [ASSESS_OK, reply("這個檔案卡了一陣子，要不要休息一下？")],
       snapshot: {
         focused_role: "AXTextArea",
         focused_value: "export function createBubbleGate(",
@@ -80,8 +85,10 @@ test("semantic snapshot success: the prompt carries the screen text", async () =
   assert.equal(bubbles.length, 1);
   assert.ok(commands(ipc).includes("semantic_snapshot"));
 
-  assert.equal(ipc.chatRequests.length, 1);
-  const req = ipc.chatRequests[0];
+  // Two calls: stage 1 (assess) then stage 2 (compose). The snapshot only
+  // shows up in the stage-2 prompt.
+  assert.equal(ipc.chatRequests.length, 2);
+  const req = ipc.chatRequests[1];
   assert.equal(req.model, "test/observe-model");
   assert.equal(req.messages[0].role, "system");
   const content = req.messages[1].content;
@@ -94,12 +101,16 @@ test("semantic snapshot success: the prompt carries the screen text", async () =
   assert.match(text, /^- gate\.ts — Sage$/m); // texts as bullets
   assert.match(text, /畫面文字過長，已截斷/);
   assert.doesNotMatch(text, /無法取得畫面文字/); // not the fallback framing
+
+  // Stage 1 never reads the snapshot — its prompt has no screen text.
+  const assessText = ipc.chatRequests[0].messages[1].content as string;
+  assert.doesNotMatch(assessText, /目前視窗的畫面文字/);
 });
 
 test("snapshot rendering skips empty fields", async () => {
   const ipc = createMockIpc(
     observing({
-      script: [reply("SILENT")],
+      script: [ASSESS_OK, reply("SILENT")],
       snapshot: {
         focused_role: "",
         focused_value: "",
@@ -112,7 +123,8 @@ test("snapshot rendering skips empty fields", async () => {
   const { gate } = createHarness(ipc);
   await gate.forceAsk();
 
-  const text = ipc.chatRequests[0].messages[1].content as string;
+  // stage 2 still reads + renders the snapshot before the SILENT reply.
+  const text = ipc.chatRequests[1].messages[1].content as string;
   assert.match(text, /^- 只有一段文字$/m);
   assert.doesNotMatch(text, /焦點元件/);
   assert.doesNotMatch(text, /選取文字/);
@@ -122,7 +134,7 @@ test("snapshot rendering skips empty fields", async () => {
 test("semantic error (permission missing): falls back to title-only", async () => {
   const ipc = createMockIpc(
     observing({
-      script: [reply("看起來卡住了？")],
+      script: [ASSESS_OK, reply("看起來卡住了？")],
       semanticError: "macOS accessibility permission missing",
     }),
   );
@@ -133,7 +145,7 @@ test("semantic error (permission missing): falls back to title-only", async () =
 
   assert.equal(bubbles.length, 1); // the ask still went through
   assert.ok(commands(ipc).includes("semantic_snapshot")); // it did try
-  const text = ipc.chatRequests[0].messages[1].content as string;
+  const text = ipc.chatRequests[1].messages[1].content as string;
   assert.match(text, /無法取得畫面文字，只有視窗標題可參考/);
   assert.match(text, /Code — a\.ts/); // titles still present
   assert.doesNotMatch(text, /焦點元件/);
@@ -142,7 +154,7 @@ test("semantic error (permission missing): falls back to title-only", async () =
 test("sensitive window: falls back to title-only", async () => {
   const ipc = createMockIpc(
     observing({
-      script: [reply("嗨")],
+      script: [ASSESS_OK, reply("嗨")],
       sensitiveWindow: true,
     }),
   );
@@ -150,19 +162,22 @@ test("sensitive window: falls back to title-only", async () => {
   await gate.forceAsk();
 
   assert.ok(commands(ipc).includes("semantic_snapshot"));
-  const text = ipc.chatRequests[0].messages[1].content as string;
+  const text = ipc.chatRequests[1].messages[1].content as string;
   assert.match(text, /無法取得畫面文字，只有視窗標題可參考/);
   assert.doesNotMatch(text, /焦點元件/);
 });
 
-test("SILENT reply: spends the ask but shows nothing", async () => {
+test("stage 1 SILENT: spends one cheap call, never reads a snapshot", async () => {
   const ipc = createMockIpc(observing({ script: [reply("SILENT")] }));
   const { gate, bubbles } = createHarness(ipc);
 
+  gate.record(sample("Code", "main.rs"));
   const replyText = await gate.forceAsk();
+
   assert.equal(replyText, null);
-  assert.equal(ipc.chatRequests.length, 1);
   assert.equal(bubbles.length, 0);
+  assert.equal(ipc.chatRequests.length, 1); // stage 1 only — no compose call
+  assert.ok(!commands(ipc).includes("semantic_snapshot")); // and no AX read
 });
 
 test("stream errors and empty models stay silent", async () => {
@@ -182,10 +197,13 @@ test("stream errors and empty models stay silent", async () => {
   assert.equal(unconfigured.bubbles.length, 0);
 });
 
-test("agent-cli backend: codex takes the same semantic prompt", async () => {
+test("agent-cli backend: codex takes both stages, snapshot in stage 2", async () => {
   const ipc = createMockIpc(
     observing({
-      agentScript: [[{ type: "delta", content: "需要幫忙嗎？" }, { type: "done" }]],
+      agentScript: [
+        [{ type: "delta", content: "卡住了，用共鳴的語氣" }, { type: "done" }],
+        [{ type: "delta", content: "需要幫忙嗎？" }, { type: "done" }],
+      ],
     }),
   );
   const { gate, bubbles } = createHarness(ipc, {
@@ -194,21 +212,21 @@ test("agent-cli backend: codex takes the same semantic prompt", async () => {
   });
 
   gate.record(sample("Code", "main.rs"));
-  const reply = await gate.forceAsk();
+  const replyText = await gate.forceAsk();
 
-  assert.equal(reply, "需要幫忙嗎？");
+  assert.equal(replyText, "需要幫忙嗎？");
   assert.equal(bubbles.length, 1);
-  // Routed to the CLI, not OpenRouter, with the same text-only semantic prompt.
+  // Routed to the CLI, not OpenRouter; two turns (assess + compose).
   assert.equal(ipc.chatRequests.length, 0);
-  assert.equal(ipc.agentRequests.length, 1);
-  assert.equal(ipc.agentRequests[0].cli, "codex");
-  assert.equal(ipc.agentRequests[0].purpose, "observe");
-  const content = ipc.agentRequests[0].messages[1].content;
+  assert.equal(ipc.agentRequests.length, 2);
+  assert.equal(ipc.agentRequests[1].cli, "codex");
+  assert.equal(ipc.agentRequests[1].purpose, "observe");
+  const content = ipc.agentRequests[1].messages[1].content;
   assert.equal(typeof content, "string");
   assert.match(content as string, /目前視窗的畫面文字/); // snapshot included for codex too
 });
 
-test("idle mode: never reads a snapshot — a pure companionship prompt", async () => {
+test("idle mode: single stage, never reads a snapshot — pure companionship", async () => {
   const ipc = createMockIpc(observing({ script: [reply("嗨嗨，工作順利嗎？")] }));
   const { gate, bubbles } = createHarness(ipc, {}, true);
 
@@ -218,7 +236,7 @@ test("idle mode: never reads a snapshot — a pure companionship prompt", async 
   assert.equal(replyText, "嗨嗨，工作順利嗎？");
   assert.equal(bubbles.length, 1);
   assert.ok(!commands(ipc).includes("semantic_snapshot")); // never even asked
-  assert.equal(ipc.chatRequests.length, 1);
+  assert.equal(ipc.chatRequests.length, 1); // no assess stage in idle mode
   const content = ipc.chatRequests[0].messages[1].content;
   assert.equal(typeof content, "string");
   assert.match(content as string, /看不到使用者的畫面/); // the see-nothing framing
@@ -226,15 +244,63 @@ test("idle mode: never reads a snapshot — a pure companionship prompt", async 
   assert.doesNotMatch(content as string, /視窗標題/); // not the observation framing
 });
 
-test("reset clears the recent-activity history", async () => {
-  const ipc = createMockIpc(observing({ script: [reply("嗨")] }));
+test("prefilter: unchanged window after speaking skips without any LLM call", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("先講一句")] }),
+  );
+  const { gate, bubbles } = createHarness(ipc);
+
+  gate.record(sample("Code", "a.ts"));
+  const first = await gate.forceAsk();
+  assert.equal(first, "先講一句");
+  assert.equal(ipc.chatRequests.length, 2); // assess + compose
+
+  // Same window, and we just spoke → prefiltered away, no new LLM call.
+  gate.record(sample("Code", "a.ts", 1000));
+  const second = await gate.forceAsk();
+  assert.equal(second, null);
+  assert.equal(ipc.chatRequests.length, 2); // unchanged
+  assert.equal(bubbles.length, 1);
+});
+
+test("repetition guard: the last remark is fed into the next ask's prompts", async () => {
+  const ipc = createMockIpc(
+    observing({
+      script: [
+        ASSESS_OK,
+        reply("第一句話"),
+        reply("換到別的地方了，用閒聊的語氣"),
+        reply("第二句話"),
+      ],
+    }),
+  );
+  const { gate } = createHarness(ipc);
+
+  gate.record(sample("Code", "a.ts"));
+  assert.equal(await gate.forceAsk(), "第一句話");
+
+  // Change window so the prefilter doesn't skip the second ask.
+  gate.record(sample("Slack", "#general", 1000));
+  assert.equal(await gate.forceAsk(), "第二句話");
+
+  // chatRequests: [0]=assess#1 [1]=compose#1 [2]=assess#2 [3]=compose#2.
+  const assess2 = ipc.chatRequests[2].messages[1].content as string;
+  const compose2 = ipc.chatRequests[3].messages[1].content as string;
+  assert.match(assess2, /你最近已經說過這些/);
+  assert.match(assess2, /第一句話/);
+  assert.match(compose2, /第一句話/);
+});
+
+test("reset clears the recent-activity history and session memory", async () => {
+  const ipc = createMockIpc(observing({ script: [ASSESS_OK, reply("嗨")] }));
   const { gate } = createHarness(ipc);
 
   gate.record(sample("Slack", "#general"));
   gate.reset();
   await gate.forceAsk();
 
-  const content = ipc.chatRequests[0].messages[1].content;
-  assert.equal(typeof content, "string");
-  assert.doesNotMatch(content as string, /Slack/); // history was dropped
+  // Neither stage should mention the dropped history.
+  for (const req of ipc.chatRequests) {
+    assert.doesNotMatch(req.messages[1].content as string, /Slack/);
+  }
 });
