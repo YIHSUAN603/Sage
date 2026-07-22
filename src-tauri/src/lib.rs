@@ -4,9 +4,11 @@ mod context;
 #[cfg(target_os = "macos")]
 mod context_macos;
 mod llm;
+mod memory;
 mod semantic;
 mod pets;
 mod privacy;
+mod sessions;
 mod settings;
 mod shell_path;
 mod skills;
@@ -75,6 +77,16 @@ pub fn run() {
             tools::tool_read_file,
             skills::list_skills,
             skills::read_skill,
+            memory::list_memories,
+            memory::read_memory,
+            memory::save_memory,
+            memory::forget_memory,
+            sessions::load_session,
+            sessions::save_session,
+            sessions::archive_session,
+            sessions::list_archives,
+            sessions::read_archive,
+            sessions::delete_archive,
             pets::list_pets,
             pets::read_pet,
             pets::read_pet_atlas,

@@ -7,6 +7,9 @@ import {
   type ActiveWindow,
   type ActivityState,
   type AgentStreamEvent,
+  type ArchiveMeta,
+  type ChatMessage,
+  type MemoryMeta,
   type Pet,
   type PetMeta,
   type SageIpc,
@@ -47,6 +50,46 @@ export const realIpc: SageIpc = {
 
   readSkill(name: string): Promise<string> {
     return invoke(COMMANDS.readSkill, { name });
+  },
+
+  listMemories(): Promise<MemoryMeta[]> {
+    return invoke(COMMANDS.listMemories);
+  },
+
+  readMemory(name: string): Promise<string> {
+    return invoke(COMMANDS.readMemory, { name });
+  },
+
+  saveMemory(name: string, description: string, body: string): Promise<void> {
+    return invoke(COMMANDS.saveMemory, { name, description, body });
+  },
+
+  forgetMemory(name: string): Promise<void> {
+    return invoke(COMMANDS.forgetMemory, { name });
+  },
+
+  loadSession(): Promise<ChatMessage[]> {
+    return invoke(COMMANDS.loadSession);
+  },
+
+  saveSession(messages: ChatMessage[]): Promise<void> {
+    return invoke(COMMANDS.saveSession, { messages });
+  },
+
+  archiveSession(): Promise<ArchiveMeta | null> {
+    return invoke(COMMANDS.archiveSession);
+  },
+
+  listArchives(): Promise<ArchiveMeta[]> {
+    return invoke(COMMANDS.listArchives);
+  },
+
+  readArchive(id: string): Promise<ChatMessage[]> {
+    return invoke(COMMANDS.readArchive, { id });
+  },
+
+  deleteArchive(id: string): Promise<void> {
+    return invoke(COMMANDS.deleteArchive, { id });
   },
 
   listPets(): Promise<PetMeta[]> {

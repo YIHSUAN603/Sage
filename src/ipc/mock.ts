@@ -5,7 +5,10 @@ import type {
   ActiveWindow,
   AgentRequest,
   AgentStreamEvent,
+  ArchiveMeta,
+  ChatMessage,
   ChatRequest,
+  MemoryMeta,
   Pet,
   PetMeta,
   SageIpc,
@@ -25,6 +28,12 @@ export interface MockIpcOptions {
   files?: Record<string, string>;
   /** Installed skills for listSkills/readSkill. Defaults to none. */
   skills?: MockSkill[];
+  /** Saved memories for listMemories/readMemory. Defaults to none. */
+  memories?: MockMemory[];
+  /** Initial persisted conversation for loadSession. Defaults to empty. */
+  session?: ChatMessage[];
+  /** Seed archives for listArchives/readArchive, keyed by id. Defaults to none. */
+  archives?: Record<string, ChatMessage[]>;
   /** Installed pets for listPets/readPet. Defaults to none. */
   pets?: Pet[];
   /** Data URL returned by readPetAtlas (any pet id). */
@@ -54,6 +63,19 @@ export interface MockIpcOptions {
 /** A skill as the mock stores it: contract SkillMeta plus its SKILL.md body. */
 export interface MockSkill extends SkillMeta {
   body: string;
+}
+
+/** A memory as the mock stores it: contract MemoryMeta plus its body. */
+export interface MockMemory extends MemoryMeta {
+  body: string;
+}
+
+/** Match memory.rs's slug: lowercase, non-alphanumeric runs → "-", trimmed. */
+function memorySlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 export interface MockIpc extends SageIpc {
@@ -120,6 +142,11 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
   const agentScript = options.agentScript ?? DEFAULT_AGENT_SCRIPT;
   const files = { ...(options.files ?? {}) };
   const skills = [...(options.skills ?? [])];
+  const memories = [...(options.memories ?? [])];
+  let session: ChatMessage[] = [...(options.session ?? [])];
+  const archives = new Map<string, ChatMessage[]>(
+    Object.entries(options.archives ?? {}).map(([id, msgs]) => [id, [...msgs]]),
+  );
   const pets = [...(options.pets ?? [])];
   const petAtlas = options.petAtlas ?? TINY_PNG_DATA_URL;
   const windows = options.windows ?? [null];
@@ -189,6 +216,87 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       // Same message shape as skills.rs
       if (!skill) throw new Error(`skill not found: ${name}`);
       return skill.body;
+    },
+
+    async listMemories() {
+      calls.push({ command: "list_memories" });
+      return memories.map(({ name, description }) => ({ name, description }));
+    },
+
+    async readMemory(name) {
+      calls.push({ command: "read_memory", args: name });
+      const memory = memories.find((m) => m.name === name);
+      // Same message shape as memory.rs
+      if (!memory) throw new Error(`memory not found: ${name}`);
+      return memory.body;
+    },
+
+    async saveMemory(name, description, body) {
+      calls.push({ command: "save_memory", args: { name, description, body } });
+      if (!memorySlug(name)) throw new Error(`invalid memory name: ${name}`);
+      // Overwrite by parsed name (mirrors the slug-file overwrite in memory.rs).
+      const existing = memories.find((m) => m.name === name);
+      if (existing) {
+        existing.description = description;
+        existing.body = body;
+      } else {
+        memories.push({ name, description, body });
+      }
+    },
+
+    async forgetMemory(name) {
+      calls.push({ command: "forget_memory", args: name });
+      const idx = memories.findIndex((m) => m.name === name);
+      // Same message shape as memory.rs
+      if (idx < 0) throw new Error(`memory not found: ${name}`);
+      memories.splice(idx, 1);
+    },
+
+    async loadSession() {
+      calls.push({ command: "load_session" });
+      return session.map((m) => ({ ...m }));
+    },
+
+    async saveSession(messages) {
+      calls.push({ command: "save_session", args: messages });
+      session = messages.map((m) => ({ ...m }));
+    },
+
+    async archiveSession() {
+      calls.push({ command: "archive_session" });
+      if (session.length === 0) return null; // nothing to archive
+      const id = `mock-${archives.size + 1}`;
+      archives.set(id, session);
+      const meta: ArchiveMeta = {
+        id,
+        saved_at: new Date().toISOString(),
+        message_count: session.length,
+      };
+      session = [];
+      return meta;
+    },
+
+    async listArchives() {
+      calls.push({ command: "list_archives" });
+      // Newest first (insertion order reversed) — mirrors sessions.rs sort.
+      return [...archives.entries()].reverse().map(([id, msgs]) => ({
+        id,
+        saved_at: id,
+        message_count: msgs.length,
+      }));
+    },
+
+    async readArchive(id) {
+      calls.push({ command: "read_archive", args: id });
+      const msgs = archives.get(id);
+      // Same message shape as sessions.rs
+      if (!msgs) throw new Error(`archive not found: ${id}`);
+      return msgs.map((m) => ({ ...m }));
+    },
+
+    async deleteArchive(id) {
+      calls.push({ command: "delete_archive", args: id });
+      if (!archives.delete(id)) throw new Error(`archive not found: ${id}`);
     },
 
     async listPets() {

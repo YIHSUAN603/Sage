@@ -38,6 +38,7 @@ export function ChatWindow() {
   const error = useChatStore((s) => s.error);
   const send = useChatStore((s) => s.send);
   const stop = useChatStore((s) => s.stop);
+  const clear = useChatStore((s) => s.clear);
   const clearError = useChatStore((s) => s.clearError);
   const mood = useChatStore(avatarMood);
   const keyReady = useSettingsStore(hasApiKey);
@@ -51,6 +52,13 @@ export function ChatWindow() {
   const permissionTitle = t("chat.permissionToggle", {
     level: t(PERMISSION_LABEL_KEY[permission]),
   });
+
+  // Load the persisted conversation once on mount. The store's not-streaming
+  // guard makes this safe under React strict-mode's double-invoke; loadSession
+  // works under the mock too, so hydrate unconditionally.
+  useEffect(() => {
+    void useChatStore.getState().hydrate();
+  }, []);
 
   // The avatar lives in another webview with its own store instance —
   // mirror the mood over a Tauri event so it can animate along.
@@ -118,6 +126,17 @@ export function ChatWindow() {
               }
             >
               {PERMISSION_ICON[permission]}
+            </button>
+          )}
+          {messages.length > 0 && (
+            <button
+              type="button"
+              className="chat-head-btn"
+              title={t("chat.newConversation")}
+              aria-label={t("chat.newConversation")}
+              onClick={() => void clear()}
+            >
+              ✎
             </button>
           )}
           <button

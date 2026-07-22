@@ -24,6 +24,7 @@ export default {
     },
     chat: {
       settingsTitle: "設定",
+      newConversation: "新しい会話（現在の会話はアーカイブされます）",
       hide: "しまう",
       dismissError: "エラーを閉じる",
       permissionToggle: "ツール権限：{{level}}（クリックで切替）",
@@ -105,6 +106,25 @@ export default {
       proactivePetHint: "空欄＝全体設定を引き継ぎます（{{cooldown}} 分、1 時間 {{max}}）。",
       proactiveUnlimited: "無制限",
       petSageError: "ペットの pet.json への書き込みに失敗——性格と頻度は保存されていません。",
+      memoryEnable: "長期記憶",
+      memoryHint:
+        "オンにすると、相棒は会話をまたいで持続的な事実を覚え、自分から思い出したり、記録したり、忘れたりできます。すべての内容はあなたのマシン上のファイルにのみ保存されます。",
+      memoryManager: "記憶の管理",
+      memoryEmpty: "まだ何も覚えていません。",
+      memoryEdit: "編集",
+      memoryDelete: "削除",
+      memoryDeleteAll: "すべて忘れる",
+      memoryDeleteAllConfirm: "もう一度クリックで確定",
+      memorySave: "保存",
+      memoryError: "記憶の操作でエラーが発生しました——もう一度お試しください。",
+      memoryDescPlaceholder: "一行の要約",
+      memoryBodyPlaceholder: "覚えておく内容（全文）",
+      archives: "アーカイブした会話",
+      archivesEmpty: "アーカイブした会話はありません。",
+      archivesError: "アーカイブの読み込みに失敗しました——もう一度お試しください。",
+      archiveView: "表示",
+      archiveDelete: "削除",
+      archiveMessages: "{{count}} 件のメッセージ",
       privacyNote:
         "観察を有効にすると、Sage は定期的に現在のウィンドウのタイトルと画面テキスト（システムのアクセシビリティ API 経由）を読み取ります。画面の画像を取得することは一切ありません。機密ウィンドウ（パスワードマネージャー、ログインページ、プライベートブラウジング…）は内容を一切読み取らず、タイトルもマスクされ、タイトル内のメールアドレス・カード番号・キーは事前に除去されます。内容はメモリ内でのみ処理され、送信後すぐ破棄されて保存されません。観察をオフにすれば、すべての読み取りと送信が完全に停止します。観察がオンで話しかけがオフの場合、観察した内容は自分からチャットを始めたときの文脈としてのみ使われます。",
       cancel: "キャンセル",
@@ -158,6 +178,12 @@ export default {
       focused: "フォーカス中の要素：{{detail}}",
       selection: "選択中のテキスト：{{text}}",
       truncated: "（画面テキストが長すぎるため切り詰めました）",
+    },
+    memory: {
+      index: {
+        intro:
+          "（あなたがユーザーについて覚えていること——関連するときに自然に活かし、逐一読み上げないこと。）",
+      },
     },
     context: {
       intro:

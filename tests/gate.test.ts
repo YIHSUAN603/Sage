@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import i18n, { i18nReady } from "../src/i18n/index.ts";
-import type { Settings, StreamEvent } from "../src/ipc/contract.ts";
+import type { ChatMessage, Settings, StreamEvent } from "../src/ipc/contract.ts";
 import { DEFAULT_SETTINGS } from "../src/ipc/contract.ts";
 import { createMockIpc, type MockIpc, type MockIpcOptions } from "../src/ipc/mock.ts";
+import { buildMemoryIndexMessage } from "../src/memory/context.ts";
 import { createRunObserve } from "../src/observe/runObserve.ts";
 import { createBubbleGate, type WindowSample } from "../src/observe/gate.ts";
 
@@ -33,6 +34,7 @@ function createHarness(
   ipc: MockIpc,
   settingsOverride: Partial<Settings> = {},
   idle = false,
+  memoryPrefix?: () => Promise<ChatMessage | null>,
 ): { gate: ReturnType<typeof createBubbleGate> } & Harness {
   const bubbles: Harness["bubbles"] = [];
   const settings: Settings = {
@@ -45,6 +47,7 @@ function createHarness(
     idle,
     runObserve: createRunObserve(ipc, () => settings),
     onBubble: (text, reason) => bubbles.push({ text, reason }),
+    memoryPrefix,
   });
   return { gate, bubbles };
 }
@@ -303,4 +306,71 @@ test("reset clears the recent-activity history and session memory", async () => 
   for (const req of ipc.chatRequests) {
     assert.doesNotMatch(req.messages[1].content as string, /Slack/);
   }
+});
+
+// The read-only memory index (index only — no bodies, no save/recall/forget
+// tools) rides into proactive prompts so a companion that "remembers you"
+// isn't memory-blind when it speaks first. Injected right after the persona
+// system message, so with memory present messages = [persona, memory, user].
+const memoryPrefixOf = (metas: { name: string; description: string }[]) => () =>
+  Promise.resolve(buildMemoryIndexMessage(metas));
+
+test("memory index rides into both the assess and compose prompts", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("這個檔案卡了一陣子，要不要休息一下？")] }),
+  );
+  const { gate } = createHarness(
+    ipc,
+    {},
+    false,
+    memoryPrefixOf([{ name: "coffee-order", description: "喜歡燕麥拿鐵" }]),
+  );
+
+  gate.record(sample("Code", "main.rs"));
+  await gate.forceAsk();
+
+  assert.equal(ipc.chatRequests.length, 2); // assess + compose
+  for (const req of ipc.chatRequests) {
+    // [0]=persona system, [1]=memory system, [2]=user prompt.
+    const memory = req.messages[1];
+    assert.equal(memory.role, "system");
+    const content = memory.content as string;
+    assert.match(content, /coffee-order/); // the index name
+    assert.match(content, /喜歡燕麥拿鐵/); // its one-line description
+    assert.equal(req.messages[2].role, "user"); // user prompt shifted down
+  }
+});
+
+test("no memoryPrefix (memory off): prompts carry no memory system message", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("嗨")] }),
+  );
+  // memoryPrefix omitted — same as memory_enabled=false / empty memory.
+  const { gate } = createHarness(ipc);
+
+  gate.record(sample("Code", "main.rs"));
+  await gate.forceAsk();
+
+  for (const req of ipc.chatRequests) {
+    assert.equal(req.messages.length, 2); // just persona system + user
+    assert.equal(req.messages[1].role, "user");
+  }
+});
+
+test("idle mode: memory index still reaches the single compose prompt", async () => {
+  const ipc = createMockIpc({ script: [reply("嗨，喝杯燕麥拿鐵休息一下？")] });
+  const { gate } = createHarness(
+    ipc,
+    {},
+    true, // idle: observation off, no assess stage
+    memoryPrefixOf([{ name: "coffee-order", description: "喜歡燕麥拿鐵" }]),
+  );
+
+  await gate.forceAsk();
+
+  assert.equal(ipc.chatRequests.length, 1); // idle skips assess → compose only
+  const memory = ipc.chatRequests[0].messages[1];
+  assert.equal(memory.role, "system");
+  assert.match(memory.content as string, /coffee-order/);
+  assert.equal(ipc.chatRequests[0].messages[2].role, "user");
 });

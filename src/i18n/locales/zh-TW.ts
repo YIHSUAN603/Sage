@@ -24,6 +24,7 @@ export default {
     },
     chat: {
       settingsTitle: "設定",
+      newConversation: "開新對話（把目前這則封存起來）",
       hide: "收起",
       dismissError: "關閉錯誤訊息",
       permissionToggle: "工具權限：{{level}}（點擊切換）",
@@ -99,6 +100,25 @@ export default {
       proactivePetHint: "留空＝沿用全域設定（{{cooldown}} 分鐘、每小時 {{max}}）。",
       proactiveUnlimited: "不限",
       petSageError: "寫回寵物的 pet.json 失敗——個性與頻率未儲存。",
+      memoryEnable: "長期記憶",
+      memoryHint:
+        "開啟後，夥伴會跨對話記住一些持久的事實，並能自行回想、記下或忘記。所有內容都只以檔案存在你的機器上。",
+      memoryManager: "記憶管理",
+      memoryEmpty: "還沒有記住任何事。",
+      memoryEdit: "編輯",
+      memoryDelete: "刪除",
+      memoryDeleteAll: "全部忘記",
+      memoryDeleteAllConfirm: "再點一次確認",
+      memorySave: "儲存",
+      memoryError: "記憶操作出了點問題——請再試一次。",
+      memoryDescPlaceholder: "一句話摘要",
+      memoryBodyPlaceholder: "要記住的完整內容",
+      archives: "封存的對話",
+      archivesEmpty: "沒有封存的對話。",
+      archivesError: "封存載入失敗——請再試一次。",
+      archiveView: "檢視",
+      archiveDelete: "刪除",
+      archiveMessages: "{{count}} 則訊息",
       privacyNote:
         "觀察開啟後，Sage 會定期讀取目前視窗的標題與畫面文字（經系統輔助功能介面），永不擷取畫面影像。敏感視窗（密碼管理器、登入頁、無痕…）永不讀取內容、標題會遮蔽，標題中的 email、卡號、金鑰也會先淨化。內容只在記憶體中處理、送出後即丟棄，不會存檔；關閉觀察即完全停止一切讀取與上傳。觀察開啟而主動搭話關閉時，觀察內容只在你主動聊天時作為脈絡使用。",
       cancel: "取消",
@@ -152,6 +172,12 @@ export default {
       focused: "焦點元件：{{detail}}",
       selection: "選取文字：{{text}}",
       truncated: "（畫面文字過長，已截斷）",
+    },
+    memory: {
+      index: {
+        intro:
+          "（這些是你記得關於使用者的事——需要時自然地帶上，別逐條複述。）",
+      },
     },
     context: {
       intro:

@@ -24,6 +24,7 @@ export default {
     },
     chat: {
       settingsTitle: "Settings",
+      newConversation: "New conversation (archives this one)",
       hide: "Hide",
       dismissError: "Dismiss error",
       permissionToggle: "Tool permission: {{level}} (click to switch)",
@@ -107,6 +108,25 @@ export default {
       proactiveUnlimited: "unlimited",
       petSageError:
         "Failed to write the pet's pet.json — personality and cadence were not saved.",
+      memoryEnable: "Long-term memory",
+      memoryHint:
+        "When on, your companion remembers durable facts across conversations and can recall, save, or forget them on its own. Everything stays in files on your machine.",
+      memoryManager: "Memories",
+      memoryEmpty: "Nothing remembered yet.",
+      memoryEdit: "Edit",
+      memoryDelete: "Delete",
+      memoryDeleteAll: "Forget all",
+      memoryDeleteAllConfirm: "Click again to confirm",
+      memorySave: "Save",
+      memoryError: "Something went wrong with a memory — please try again.",
+      memoryDescPlaceholder: "One-line summary",
+      memoryBodyPlaceholder: "What to remember, in full",
+      archives: "Archived conversations",
+      archivesEmpty: "No archived conversations.",
+      archivesError: "Couldn't load archives — please try again.",
+      archiveView: "View",
+      archiveDelete: "Delete",
+      archiveMessages: "{{count}} messages",
       privacyNote:
         "When observation is on, Sage periodically reads the current window's title and on-screen text (via the system accessibility API) — it never captures screen images. Sensitive windows (password managers, login pages, private browsing…) never have their content read and their titles are masked, with emails, card numbers, and keys redacted from titles. Content is processed in memory only and discarded right after sending — never saved to disk. Turning observation off stops all reading and upload entirely. With observation on but proactive chatter off, what's observed is only used as context when you start a chat yourself.",
       cancel: "Cancel",
@@ -160,6 +180,12 @@ export default {
       focused: "Focused element: {{detail}}",
       selection: "Selected text: {{text}}",
       truncated: "(The screen text was too long and got truncated.)",
+    },
+    memory: {
+      index: {
+        intro:
+          "(Things you remember about the user — draw on them naturally when relevant; don't recite them.)",
+      },
     },
     context: {
       intro:
