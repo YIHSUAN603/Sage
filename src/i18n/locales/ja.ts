@@ -68,7 +68,7 @@ export default {
       chatModelPlaceholder: "クリックしてリストから選ぶか、model id を直接入力",
       modelsError:
         "モデルリストの読み込みに失敗しました——OpenRouter の model id を直接入力してください（例：google/gemma-4-26b-a4b-it:free）。",
-      recommended: "（おすすめ：tools+vision 両対応）",
+      recommended: "（おすすめ：チャットモデルと共用可）",
       observeModel: "観察モデル",
       observeModelPlaceholder: "チャットモデルと同じでも可",
       observeEnable: "観察を有効にする（デフォルトはオフ）",

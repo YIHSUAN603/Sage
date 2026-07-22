@@ -17,7 +17,11 @@ export interface OpenRouterModel {
 export interface ModelChoice {
   id: string;
   name: string;
-  /** True when the model is free AND supports both tools and image input. */
+  /**
+   * Observe dropdown only: true when the model also supports `tools`, so the
+   * same model can serve both the chat and observe slots. Always false in the
+   * chat list (every entry there is dual-capable — observation is text-only).
+   */
   recommended: boolean;
 }
 
@@ -40,9 +44,6 @@ function supportsTools(model: OpenRouterModel): boolean {
   return (model.supported_parameters ?? []).includes("tools");
 }
 
-function supportsImageInput(model: OpenRouterModel): boolean {
-  return (model.architecture?.input_modalities ?? []).includes("image");
-}
 
 // 安全審查/內容分類模型（Llama Guard、Nemotron Content Safety…）只會輸出
 // 「safe/unsafe」之類的標籤，不能聊天也不能描述畫面。OpenRouter 沒有結構化
@@ -77,12 +78,8 @@ async function fetchModels(fetchFn: FetchLike): Promise<OpenRouterModel[]> {
   return body.data as OpenRouterModel[];
 }
 
-function toChoice(model: OpenRouterModel): ModelChoice {
-  return {
-    id: model.id,
-    name: model.name,
-    recommended: supportsTools(model) && supportsImageInput(model),
-  };
+function toChoice(model: OpenRouterModel, recommended: boolean): ModelChoice {
+  return { id: model.id, name: model.name, recommended };
 }
 
 /** Free models usable for chat + function calling (`tools`). */
@@ -90,13 +87,20 @@ export async function fetchFreeToolModels(
   fetchFn: FetchLike = globalThis.fetch,
 ): Promise<ModelChoice[]> {
   const models = await fetchModels(fetchFn);
-  return models.filter((m) => isUsable(m) && supportsTools(m)).map(toChoice);
+  return models
+    .filter((m) => isUsable(m) && supportsTools(m))
+    .map((m) => toChoice(m, false));
 }
 
-/** Free models usable for screen observation (accept image input). */
-export async function fetchFreeVisionModels(
+/**
+ * Free models usable for observation. Observation prompts are text-only
+ * (semantic snapshots, no images), so every usable model qualifies;
+ * tools-capable ones are flagged recommended — pick one of those and the
+ * chat slot can share it.
+ */
+export async function fetchFreeObserveModels(
   fetchFn: FetchLike = globalThis.fetch,
 ): Promise<ModelChoice[]> {
   const models = await fetchModels(fetchFn);
-  return models.filter((m) => isUsable(m) && supportsImageInput(m)).map(toChoice);
+  return models.filter(isUsable).map((m) => toChoice(m, supportsTools(m)));
 }

@@ -64,7 +64,7 @@ export default {
       chatModelPlaceholder: "点一下从列表挑选，或直接填 model id",
       modelsError:
         "模型列表加载失败——请自行填入 OpenRouter model id（例：google/gemma-4-26b-a4b-it:free）。",
-      recommended: "（推荐：tools+vision 通吃）",
+      recommended: "（推荐：可与聊天模型共用）",
       observeModel: "观察模型",
       observeModelPlaceholder: "可与聊天模型相同",
       observeEnable: "开启观察（默认关闭）",

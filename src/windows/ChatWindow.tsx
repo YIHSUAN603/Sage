@@ -18,7 +18,7 @@ import {
   type BubbleOpenEventPayload,
   type ContextEventPayload,
 } from "../events.ts";
-import { fetchFreeToolModels, fetchFreeVisionModels } from "../llm/models.ts";
+import { fetchFreeObserveModels, fetchFreeToolModels } from "../llm/models.ts";
 import { hasTauri } from "../runtime.ts";
 import { avatarMood, MOOD_EVENT, useChatStore } from "../store/chat.ts";
 import { useObservationStore } from "../store/observation.ts";
@@ -28,7 +28,7 @@ import "./chat.css";
 // Module-level so the references stay stable across renders (the dialog's
 // load effect depends on them).
 const loadChatModels = () => fetchFreeToolModels();
-const loadObserveModels = () => fetchFreeVisionModels();
+const loadObserveModels = () => fetchFreeObserveModels();
 
 export function ChatWindow() {
   const { t } = useTranslation();

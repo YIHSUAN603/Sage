@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  fetchFreeObserveModels,
   fetchFreeToolModels,
-  fetchFreeVisionModels,
   OPENROUTER_MODELS_URL,
   type FetchLike,
   type OpenRouterModel,
@@ -88,23 +88,30 @@ test("fetchFreeToolModels keeps only free models supporting tools", async () => 
   assert.deepEqual(urls, [OPENROUTER_MODELS_URL]);
   assert.deepEqual(models, [
     { id: "a/free-tools", name: "Free Tools", recommended: false },
-    { id: "c/free-both", name: "Free Both", recommended: true },
+    { id: "c/free-both", name: "Free Both", recommended: false },
   ]);
 });
 
-test("fetchFreeVisionModels keeps only free models with image input", async () => {
-  const models = await fetchFreeVisionModels(fakeFetch({ data: CATALOG }));
+test("fetchFreeObserveModels keeps every usable free model, flagging tools-capable as shareable", async () => {
+  // 觀察是純文字 prompt——不再要求 image 輸入，任何可用的免費模型都合格；
+  // 支援 tools 的標記為推薦（同一顆可與聊天槽共用）。
+  const models = await fetchFreeObserveModels(fakeFetch({ data: CATALOG }));
   assert.deepEqual(models, [
+    { id: "a/free-tools", name: "Free Tools", recommended: true },
     { id: "b/free-vision", name: "Free Vision", recommended: false },
     { id: "c/free-both", name: "Free Both", recommended: true },
+    { id: "e/free-plain", name: "Free Plain", recommended: false },
   ]);
 });
 
 test("models missing pricing/capability fields are treated as not matching", async () => {
   const tools = await fetchFreeToolModels(fakeFetch({ data: CATALOG }));
-  const vision = await fetchFreeVisionModels(fakeFetch({ data: CATALOG }));
-  for (const list of [tools, vision]) {
-    assert.ok(!list.some((m) => m.id === "e/free-plain"));
+  const observe = await fetchFreeObserveModels(fakeFetch({ data: CATALOG }));
+  // e/free-plain 沒有 pricing 以外的能力欄位：聊天槽要求 tools 所以出局，
+  // 觀察槽只要可用即可（免費、輸出文字、非分類器）所以保留。
+  assert.ok(!tools.some((m) => m.id === "e/free-plain"));
+  assert.ok(observe.some((m) => m.id === "e/free-plain"));
+  for (const list of [tools, observe]) {
     assert.ok(!list.some((m) => m.id === "d/paid-both"));
     // prompt 免費但 completion 計費 → 不是真免費
     assert.ok(!list.some((m) => m.id === "f/free-prompt-paid-completion"));
@@ -113,8 +120,8 @@ test("models missing pricing/capability fields are treated as not matching", asy
 
 test("safety classifiers and non-text-output models are excluded", async () => {
   const tools = await fetchFreeToolModels(fakeFetch({ data: CATALOG }));
-  const vision = await fetchFreeVisionModels(fakeFetch({ data: CATALOG }));
-  for (const list of [tools, vision]) {
+  const observe = await fetchFreeObserveModels(fakeFetch({ data: CATALOG }));
+  for (const list of [tools, observe]) {
     // 只回 safe/unsafe 標籤的審查模型（如 content-safety、llama-guard）
     assert.ok(!list.some((m) => m.id === "g/content-safety:free"));
     // 輸出不含 text 的模型（音樂/影像生成）
@@ -131,7 +138,7 @@ test("non-ok HTTP response rejects with the status code", async () => {
 
 test("malformed body without a data array rejects", async () => {
   await assert.rejects(
-    () => fetchFreeVisionModels(fakeFetch({ data: "nope" })),
+    () => fetchFreeObserveModels(fakeFetch({ data: "nope" })),
     /missing data array/,
   );
 });

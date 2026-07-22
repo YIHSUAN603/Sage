@@ -68,7 +68,7 @@ export default {
       chatModelPlaceholder: "Click to pick from the list, or type a model id",
       modelsError:
         "Couldn't load the model list — please enter an OpenRouter model id yourself (e.g. google/gemma-4-26b-a4b-it:free).",
-      recommended: " (recommended: tools + vision)",
+      recommended: " (recommended: can double as the chat model)",
       observeModel: "Observe model",
       observeModelPlaceholder: "May be the same as the chat model",
       observeEnable: "Enable observation (off by default)",

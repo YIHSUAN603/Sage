@@ -1,6 +1,6 @@
 // S4.4 — Settings modal inside the chat window: API key, the two model
-// slots (chat needs `tools`, observe needs image input), and the
-// observation switch with its privacy note.
+// slots (chat needs `tools`; observe is text-only, any free model works), and
+// the observation switch with its privacy note.
 import { useEffect, useState, type FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { LANGUAGE_LABELS, LANGUAGES } from "../i18n/index.ts";
@@ -17,7 +17,7 @@ import { UpdateSection } from "./UpdateSection.tsx";
 
 /**
  * 模型清單載入介面（llm/models.ts 的 fetchFreeToolModels /
- * fetchFreeVisionModels）。載入失敗或回空陣列時，欄位退化成
+ * fetchFreeObserveModels）。載入失敗或回空陣列時，欄位退化成
  * 「手填 model id 的 text input + datalist」。
  */
 export interface ModelOption {
@@ -148,7 +148,7 @@ interface Props {
   onClose: () => void;
   /** 免費且支援 tools 的模型清單。 */
   loadChatModels?: LoadModels;
-  /** 免費且支援 image 輸入的模型清單。 */
+  /** 觀察用的免費模型清單（純文字觀察，任何可用模型皆可）。 */
   loadObserveModels?: LoadModels;
 }
 
