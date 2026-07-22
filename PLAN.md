@@ -51,7 +51,7 @@
 | S1.1 | 設定存本機（含雙模型槽與觀察偏好） | `settings.rs` get/set app config dir JSON：`api_key`/`chat_model`/`observe_model`/`observe_enabled`/`observe_interval`/`referer`；`lib.rs` 註冊 | 3 | S0.2 |
 | S1.2 | 讀本機檔案（第一個工具） | `tools.rs` `tool_read_file(path)`：UTF-8、上限 256KB、錯誤處理 | 3 | S0.2 |
 | S1.3 | LLM 串流（支援圖片輸入，key 不外洩） | `llm.rs` `chat_stream(channel, req)`：reqwest 串流打 OpenRouter，訊息可含 image data URL；逐 delta（content + tool_calls 片段）回傳；key 由 settings 讀取不進 JS；401/429/網路錯誤結構化回報 | 8 | S1.1 |
-| S1.4 | 螢幕擷取（節流、降尺寸、可暫停） | `capture.rs` `capture_screen()`：用 `xcap` 擷主螢幕→降尺寸(寬≤1024)→JPEG base64 data URL；macOS 螢幕錄製權限偵測/引導；`observe_enabled=false` 時直接拒絕 | 5 | S0.2 |
+| S1.4 | ~~螢幕擷取（節流、降尺寸、可暫停）~~ **已由 EPIC 7 拆除**，改為語意快照（S7.x） | ~~`capture.rs` `capture_screen()`~~ 截圖路線於 2026-07 移除：像素無法過文字淨化管線、token 貴、需螢幕錄製權限 | 5 | S0.2 |
 | S1.5 | 目前視窗查詢（輕量脈絡） | `context.rs` `active_window()`：回傳最前景 app 名 + 視窗標題（用 `active-win-pos-rs` 類套件）；跨平台，失敗回 None | 3 | S0.2 |
 
 ### EPIC 2 — 前端 LLM 核心邏輯（LLM-logic track，純函式可 mock）
@@ -95,16 +95,31 @@
 | S6.2 | 讀檔迴圈打通（Sprint 1 完成） | 「讀取 `<路徑>` 並摘要」→出現 read_file 卡片→據內容回覆；錯 key 顯示 401、讀不存在檔能處理 | 5 | S6.1, S2.3, S3.1, S1.2 |
 | S6.3 | 觀察冒泡打通（Sprint 2 完成） | 開啟觀察→切換 app→角色反映脈絡；觸發值得一提事件→冒泡出現；點冒泡→帶著剛觀察到的脈絡對話；關閉觀察→完全停止、無截圖 | 5 | S6.2, S5.4 |
 
-**總點數 ≈ 111。Sprint 1（EPIC 0–4 + S6.1/6.2）≈ 68；Sprint 2（EPIC 5 + S6.3）≈ 23。**
+### EPIC 7 — 觀察去截圖化：語意快照 + 活動訊號（Semantic Observation）★2026-07
+
+截圖是資訊密度最低、隱私風險最高、token 最貴的觀察來源，且像素過不了 `privacy.rs` 的文字淨化管線。本 EPIC 完全移除截圖（含 `xcap`/`image` 依賴與螢幕錄製權限），改為三層訊號：①（新）平台無障礙 API 讀前景視窗結構化文字（macOS AX / Windows UIA），全部過 sanitize + 長度上限；②（新）閒置秒數（`user-idle`，零權限），人不在就不提問；③（既有）標題時間軸作為降級路徑。隱私敘事升級為「永不讀取畫面像素」；macOS 權限改為「輔助使用」。
+
+| ID | User Story | 驗收條件 | 點 | 相依 |
+|----|-----------|---------|----|----|
+| S7.1 | 契約改版與 Rust 骨架（Gate） | contract.ts 移除 captureScreen/observe_capture_mode、新增 SemanticSnapshot/ActivityState；刪 capture.rs 與 xcap；semantic.rs 共用層（blocklist 閘門、sanitize、片段 200 字/總量 2000 字/20 段上限、cfg 平台分派）+ activity.rs；mock/real/測試同步全綠 | 5 | S5.3 |
+| S7.2 | macOS AX backend | `semantic_macos.rs`：AXIsProcessTrusted 偵測與輔助使用引導；焦點元件 role/value/selection；限深（8）限量（300 元素）走訪收集視窗文字 | 8 | S7.1 |
+| S7.3 | Windows UIA backend | `semantic_windows.rs`：UIA 焦點元素 + TreeWalker 走訪；process id 對齊 blocklist 通過的視窗；`cargo check --target x86_64-pc-windows-msvc` 綠（實機 E2E 另開工項） | 8 | S7.1 |
+| S7.4 | 前端語意 prompt + 閒置跳過 | gate.ts 改組 prompt（withSemantic/titleOnly，降級鏈：語意→純標題）；runner 依 idle_seconds≥600 跳過 ask；runObserve 移除剝圖 dead code；設定頁權限引導 + 四語系文案；Node tests 覆蓋 | 8 | S7.1 |
+| S7.5 | 整合驗收 | 三軌合併全綠（tsc/cargo/雙 target/tests）；macOS E2E：授權→氣泡引用畫面文字、拒絕→退純標題、blocklist→拒讀、觀察關→idle chatter 照舊 | 5 | S7.2, S7.3, S7.4 |
+
+**多工**：S7.1 完成後，S7.2 / S7.3 / S7.4 以三個平行 agent（各自 git worktree）同時開發，S7.5 由主線整合。
+
+**總點數 ≈ 111 + 34（EPIC 7）。Sprint 1（EPIC 0–4 + S6.1/6.2）≈ 68；Sprint 2（EPIC 5 + S6.3）≈ 23；Sprint 3（EPIC 7）≈ 34。**
 
 ---
 
 ## 隱私與權限（新方向的硬約束）
 
 - 觀察**預設關閉**，需使用者在設定頁明確開啟；角色上恆有「暫停觀察」快捷（一鍵停）。
-- 螢幕截圖需 macOS 螢幕錄製權限（TCC）；首次引導、被拒時退回「只用視窗標題」模式。
-- 截圖只在記憶體處理→送出→即丟，不落地存檔；預設降尺寸壓縮以省 token 也降敏感度。
-- 送往 OpenRouter 的一切都在觀察開啟時才發生；關閉即無任何擷取/上傳。
+- **永不讀取畫面像素**（EPIC 7 起）：觀察內容來自平台無障礙 API 的結構化文字，全部經 privacy.rs 淨化（email/數字串/token 遮蔽）與長度上限後才離開 Rust。
+- macOS 語意快照需「輔助使用」權限（不再需要螢幕錄製）；被拒時退回「只用視窗標題」模式。Windows 無需權限。
+- 敏感視窗 blocklist（內建 + 使用者自訂）在讀取內容**之前**把關；命中即拒讀且標題遮蔽。
+- 內容只在記憶體處理→送出→即丟，不落地存檔；送往 OpenRouter 的一切都在觀察開啟時才發生，關閉即無任何擷取/上傳。
 
 ---
 
