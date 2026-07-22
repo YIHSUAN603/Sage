@@ -1,9 +1,16 @@
 name: Update Homebrew Cask
 
 # Release 正式發佈（draft → published）後，自動更新 homebrew-tap 的 cask 版號與 sha256
+# 也可從 Actions 頁面手動觸發，指定既有 release 的 tag
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要同步的 release tag（例如 v0.3.0）'
+        required: true
+        type: string
 
 jobs:
   update-cask:
@@ -17,7 +24,7 @@ jobs:
 
       - name: Regenerate cask
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           VERSION="${TAG#v}"
           BASE="https://github.com/YIHSUAN603/Sage/releases/download/${TAG}"
@@ -48,7 +55,7 @@ jobs:
 
       - name: Commit and push
         env:
-          TAG: ${{ github.event.release.tag_name }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
