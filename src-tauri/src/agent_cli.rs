@@ -63,6 +63,16 @@ pub struct AgentRequest {
     pub permission: String,
 }
 
+/// Windows spawns every console child of a GUI app in a fresh console window,
+/// so each claude/codex call flashes (or leaves behind) a terminal. Suppress it.
+#[cfg(windows)]
+fn hide_console(cmd: &mut Command) {
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    cmd.creation_flags(CREATE_NO_WINDOW);
+}
+#[cfg(not(windows))]
+fn hide_console(_cmd: &mut Command) {}
+
 /// Clamp a stored permission string to a known tier (anything else ⇒ read_only).
 fn sanitize_permission(raw: &str) -> String {
     match raw {
@@ -133,8 +143,10 @@ pub async fn check_agent_cli(cli: String, path: String) -> Result<String, String
             other => return Err(format!("unknown agent CLI: {other}")),
         }
     };
-    let output = Command::new(&bin)
-        .arg("--version")
+    let mut cmd = Command::new(&bin);
+    cmd.arg("--version");
+    hide_console(&mut cmd);
+    let output = cmd
         .output()
         .await
         .map_err(|e| {
@@ -181,6 +193,7 @@ async fn run(
             Stdio::null()
         })
         .kill_on_drop(true);
+    hide_console(&mut cmd);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
