@@ -6,6 +6,7 @@ import {
   COMMANDS,
   type ActiveWindow,
   type ActivityState,
+  type AgentActivity,
   type AgentStreamEvent,
   type ArchiveMeta,
   type ChatMessage,
@@ -138,5 +139,9 @@ export const realIpc: SageIpc = {
 
   activeWindow(): Promise<ActiveWindow | null> {
     return invoke(COMMANDS.activeWindow);
+  },
+
+  agentActivity(): Promise<AgentActivity | null> {
+    return invoke(COMMANDS.agentActivity);
   },
 };

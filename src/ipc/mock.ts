@@ -3,6 +3,7 @@
 // runs under `node --experimental-strip-types` without a bundler.
 import type {
   ActiveWindow,
+  AgentActivity,
   AgentRequest,
   AgentStreamEvent,
   ArchiveMeta,
@@ -58,6 +59,8 @@ export interface MockIpcOptions {
   semanticError?: string;
   /** idle_seconds returned by activityState. Defaults to 0 (active user). */
   idleSeconds?: number;
+  /** AgentActivity returned by agentActivity. Defaults to null (no session). */
+  agentActivity?: AgentActivity | null;
 }
 
 /** A skill as the mock stores it: contract SkillMeta plus its SKILL.md body. */
@@ -389,6 +392,12 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       const win = windows[windowCall % windows.length];
       windowCall += 1;
       return win === null ? null : { ...win };
+    },
+
+    async agentActivity() {
+      calls.push({ command: "agent_activity" });
+      const a = options.agentActivity ?? null;
+      return a === null ? null : { ...a, texts: [...a.texts] };
     },
   };
 }

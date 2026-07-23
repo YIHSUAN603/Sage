@@ -81,6 +81,14 @@ export interface Settings {
    * content travels the same LLM path chat content already does.
    */
   memory_enabled: boolean;
+  /**
+   * Observe the user's own coding-agent sessions (Claude Code / Codex): tail
+   * their transcript JSONL so the companion can react to what they're doing in
+   * the terminal, and (Claude) install a hook for prompt/permission/stop
+   * signals. Off by default — reads ~/.claude and ~/.codex. Independent of
+   * observe_enabled (screen observation).
+   */
+  observe_agents: boolean;
 }
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
@@ -105,6 +113,7 @@ export const DEFAULT_SETTINGS: Settings = {
   proactive_cooldown_minutes: 1,
   proactive_max_per_hour: 0,
   memory_enabled: true,
+  observe_agents: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -329,6 +338,27 @@ export interface ActivityState {
   idle_seconds: number;
 }
 
+/**
+ * A snapshot of the user's *own* coding-agent session (Claude Code / Codex),
+ * read from the transcript JSONL each CLI writes to disk. Every string is
+ * sanitized (privacy.rs) and length-capped before it leaves Rust. Null from the
+ * IPC = feature off, no session, or nothing readable.
+ */
+export interface AgentActivity {
+  /** Which CLI this reflects. */
+  source: "claude" | "codex";
+  /** Session identifier (transcript filename stem). */
+  session: string;
+  /** Coarse turn state — "waiting_permission" only ever comes from the hook. */
+  state: "running" | "idle" | "waiting_permission";
+  /** Recent turn text (prompts + replies), oldest→newest, each prefixed by role. */
+  texts: string[];
+  /** Last tool action, human-readable (e.g. "Read: /path", "shell: pwd"), or null. */
+  tool: string | null;
+  /** Transcript mtime, epoch milliseconds. */
+  updated_at: number;
+}
+
 // ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
@@ -360,6 +390,7 @@ export const COMMANDS = {
   semanticSnapshot: "semantic_snapshot",
   activityState: "activity_state",
   activeWindow: "active_window",
+  agentActivity: "agent_activity",
 } as const;
 
 /**
@@ -460,4 +491,10 @@ export interface SageIpc {
   activityState(): Promise<ActivityState>;
   /** Frontmost app + window title, or null when unavailable. */
   activeWindow(): Promise<ActiveWindow | null>;
+  /**
+   * Current coding-agent activity (Claude Code / Codex), or null when
+   * observe_agents is off, no session exists, or nothing could be read. Never
+   * rejects — a companion signal degrades to silence, never to an error.
+   */
+  agentActivity(): Promise<AgentActivity | null>;
 }

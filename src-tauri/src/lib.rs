@@ -1,5 +1,6 @@
 mod activity;
 mod agent_cli;
+mod agent_watch;
 mod context;
 #[cfg(target_os = "macos")]
 mod context_macos;
@@ -97,7 +98,8 @@ pub fn run() {
             agent_cli::check_agent_cli,
             semantic::semantic_snapshot,
             activity::activity_state,
-            context::active_window
+            context::active_window,
+            agent_watch::agent_activity
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

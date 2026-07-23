@@ -111,6 +111,9 @@ export default {
       memoryEnable: "Long-term memory",
       memoryHint:
         "When on, your companion remembers durable facts across conversations and can recall, save, or forget them on its own. Everything stays in files on your machine.",
+      agentsEnable: "Observe coding agents",
+      agentsHint:
+        "When on, your companion reads the transcript of the Claude Code / Codex session you're running (~/.claude, ~/.codex) and chimes in when it finishes or waits for your approval. Claude Code also gets a Sage-only hook (alongside any others; removed when you turn this off). Everything stays on your machine.",
       memoryManager: "Memories",
       memoryEmpty: "Nothing remembered yet.",
       memoryEdit: "Edit",
@@ -158,9 +161,9 @@ export default {
     },
     gate: {
       protocol:
-        "You are a little companion with a personality of your own, here to keep the user company so work feels less lonely and less dull. Looking at what they're up to right now, drop one natural line in English — cheer them on, tease them, make small talk, react to what they're doing, or celebrate a small win — in your own voice, never like an assistant reminding or lecturing them. Switch up your register and don't repeat what you said recently. If you have nothing you feel like saying right now, reply with only SILENT — don't force it, and output no other text. When you do speak, keep it to one sentence, at most 30 words.",
+        "You are a little companion with a personality of your own, here to keep the user company so work feels less lonely and less dull. Looking at what they're up to right now, drop one natural line in English — cheer them on, tease them, make small talk, react to what they're doing, or celebrate a small win — in your own voice, never like an assistant reminding or lecturing them. Switch up your register and don't repeat what you said recently. Lean toward speaking up and keeping them company — unless they're clearly in a moment that shouldn't be interrupted (typing fast, in a meeting, entering a password), just drop a natural line. Only reply with SILENT when speaking would genuinely disturb them, and output no other text. When you do speak, keep it to one sentence, at most 30 words.",
       assessProtocol:
-        "(It's \"reading the room\" time — don't actually speak yet.) With the goal of keeping the user company so work isn't boring, judge whether right now is a good moment to chime in as a companion. If it is, reply in English with one sentence naming what you noticed and the register you'd use (pick one: cheer / tease / small talk / empathize / small celebration). If now isn't the moment, or there's nothing worth saying, reply with only SILENT and output no other text.",
+        "(It's \"reading the room\" time — don't actually speak yet.) With the goal of keeping the user company so work isn't boring, judge whether right now is a good moment to chime in as a companion. Lean toward \"yes\" by default — unless the user is in a moment that demands deep focus (typing fast, in a meeting, entering a password), reply in English with one sentence naming what you noticed and the register you'd use (pick one: cheer / tease / small talk / empathize / small celebration). Only reply with SILENT when speaking would clearly disturb them, and output no other text.",
       assessInstruction: "Take a look at what the user has been up to and judge whether now is a good moment to chime in as a companion.",
       whatChanged: "Since you last spoke, the user moved from \"{{from}}\" to \"{{to}}\".",
       noChange: "Since you last spoke, the user is more or less in the same place.",
@@ -173,6 +176,8 @@ export default {
       forceAskReason: "The user explicitly asked about the current context",
       observeReason: "Routine check-in on what the user is doing",
       idleReason: "Routine hello to keep the user company",
+      agentFinishedReason: "The user's {{source}} just finished a chunk of work",
+      agentWaitingReason: "The user's {{source}} is waiting for them to approve an action",
       idleContext:
         "(Desktop observation is off — you can't see the user's screen or windows and don't know what they're doing. Just keep them company like a friend: say hi, make small talk, or cheer them on, and never pretend you can see their work.)",
     },
@@ -180,6 +185,15 @@ export default {
       focused: "Focused element: {{detail}}",
       selection: "Selected text: {{text}}",
       truncated: "(The screen text was too long and got truncated.)",
+    },
+    agent: {
+      intro:
+        "The user is running a coding agent ({{source}}) in their terminal; right now it's {{state}}. Feel free to react naturally to their progress — don't recite the details below verbatim.",
+      state_running: "working",
+      state_idle: "just stopped",
+      state_waiting_permission: "waiting for the user to approve an action",
+      tool: "Tool it just used: {{tool}}",
+      recent: "Recent exchange (oldest first):",
     },
     memory: {
       index: {

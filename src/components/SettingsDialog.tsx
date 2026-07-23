@@ -841,6 +841,18 @@ export function SettingsDialog({
           <label className="switch-label">
             <input
               type="checkbox"
+              checked={draft.observe_agents}
+              onChange={(e) => patch({ observe_agents: e.currentTarget.checked })}
+            />
+            <span>{t("settings.agentsEnable")}</span>
+          </label>
+          <span className="field-hint">{t("settings.agentsHint")}</span>
+        </div>
+
+        <div className="field">
+          <label className="switch-label">
+            <input
+              type="checkbox"
               checked={draft.memory_enabled}
               onChange={(e) => patch({ memory_enabled: e.currentTarget.checked })}
             />

@@ -16,7 +16,12 @@
 // mode (observation off) skips the prefilter/stage-1/snapshot entirely — it's a
 // pure keep-them-company prompt with nothing to observe.
 import i18n from "../i18n/index.ts";
-import type { ChatMessage, SageIpc, SemanticSnapshot } from "../ipc/contract.ts";
+import type {
+  AgentActivity,
+  ChatMessage,
+  SageIpc,
+  SemanticSnapshot,
+} from "../ipc/contract.ts";
 import { assessSystem, gateSystem } from "../store/persona.ts";
 import type { RunObserve } from "./runObserve.ts";
 
@@ -49,6 +54,14 @@ export interface GateOptions {
    * tools (proactive chatter is observe-only, i.e. read-only).
    */
   memoryPrefix?(): Promise<ChatMessage | null>;
+  /**
+   * Latest coding-agent activity (Claude Code / Codex), or null. Rides into
+   * both stages so the companion can react to what the user is doing in the
+   * terminal — what's running, what just finished, which tool ran. Resolved
+   * once per ask (the runner's poller keeps it fresh); independent of screen
+   * observation, so it works even in idle mode.
+   */
+  agentActivity?(): Promise<AgentActivity | null>;
   /** Diagnostic trace of each ask (assess/snapshot/stream error/reply). */
   onDebug?(message: string): void;
 }
@@ -94,6 +107,26 @@ function renderSnapshot(snapshot: SemanticSnapshot): string {
   return lines.join("\n");
 }
 
+/**
+ * Render the coding-agent activity as prompt lines: a state line (with the
+ * localized state word), the last tool, and the recent turn fragments. All
+ * labels resolve through the `prompt` i18n namespace.
+ */
+function renderAgentActivity(agent: AgentActivity): string {
+  const state = i18n.t(`agent.state_${agent.state}`, { ns: "prompt" });
+  const lines: string[] = [
+    i18n.t("agent.intro", { ns: "prompt", source: agent.source, state }),
+  ];
+  if (agent.tool) {
+    lines.push(i18n.t("agent.tool", { ns: "prompt", tool: agent.tool }));
+  }
+  if (agent.texts.length > 0) {
+    lines.push(i18n.t("agent.recent", { ns: "prompt" }));
+    for (const text of agent.texts) lines.push(`- ${text}`);
+  }
+  return lines.join("\n");
+}
+
 export function createBubbleGate(options: GateOptions): BubbleGate {
   const historyLimit = options.historyLimit ?? 60;
 
@@ -103,6 +136,9 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
   // said (avoid repeats / monotony) and which window it last spoke about.
   let recentRemarks: string[] = [];
   let lastAskWindow: WindowSample | null = null;
+  // Signature of the coding-agent activity at the last ask — lets a fresh agent
+  // action bypass the unchanged-screen prefilter.
+  let lastAskAgentKey: string | null = null;
 
   const debug = options.onDebug ?? (() => {});
 
@@ -146,6 +182,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
   async function assess(
     prev: WindowSample | null,
     memory: ChatMessage | null,
+    agent: AgentActivity | null,
   ): Promise<string | null> {
     const change = changeSince(prev, currentWindow());
     const said = recentlySaidBlock();
@@ -154,6 +191,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       i18n.t("gate.recentActivity", { ns: "prompt" }),
       recentActivityLines(),
       change,
+      agent ? renderAgentActivity(agent) : null,
       said,
     ]
       .filter((line): line is string => Boolean(line))
@@ -185,6 +223,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     reason: string,
     focus: string | null,
     memory: ChatMessage | null,
+    agent: AgentActivity | null,
   ): Promise<string | null> {
     // The semantic snapshot is best-effort: a missing accessibility
     // permission, a sensitive window, or observation just turned off falls
@@ -206,10 +245,13 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     const said = recentlySaidBlock();
     // Prompt strings resolve at ask time so a language switch takes effect
     // immediately (the reply language follows the UI language).
+    const agentBlock = agent ? renderAgentActivity(agent) : null;
     const lines: (string | null)[] = options.idle
       ? [
           i18n.t("gate.trigger", { ns: "prompt", reason }),
-          i18n.t("gate.idleContext", { ns: "prompt" }),
+          // No screen to read, but the coding-agent signal (if any) still gives
+          // the companion something concrete to react to.
+          agentBlock ?? i18n.t("gate.idleContext", { ns: "prompt" }),
           said,
         ]
       : [
@@ -221,6 +263,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
             ? i18n.t("gate.withSemantic", { ns: "prompt" })
             : i18n.t("gate.titleOnly", { ns: "prompt" }),
           snapshot ? renderSnapshot(snapshot) : null,
+          agentBlock,
           said,
         ];
     const text = lines.filter((line): line is string => Boolean(line)).join("\n");
@@ -249,15 +292,25 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
   async function ask(reason: string): Promise<string | null> {
     const now = currentWindow();
 
+    // Coding-agent activity: fetched once, shared by the prefilter and both
+    // stages. Independent of screen observation, so idle mode still gets it.
+    const agent = options.agentActivity ? await options.agentActivity() : null;
+    const agentKey = agent
+      ? `${agent.session}:${agent.state}:${agent.tool ?? ""}:${agent.texts.length}`
+      : null;
+
     // Prefilter (observe mode only): don't keep nattering at a screen that
-    // hasn't changed when we already spoke recently.
+    // hasn't changed when we already spoke recently — but a fresh coding-agent
+    // action (new state/tool/turn) is exactly the kind of thing worth reacting
+    // to, so it bypasses the skip.
     if (
       !options.idle &&
       lastAskWindow &&
       now &&
       lastAskWindow.app_name === now.app_name &&
       lastAskWindow.title === now.title &&
-      recentRemarks.length > 0
+      recentRemarks.length > 0 &&
+      agentKey === lastAskAgentKey
     ) {
       debug("畫面未變且剛說過，跳過（不打任何 LLM）");
       return null;
@@ -265,6 +318,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
     const prev = lastAskWindow;
     lastAskWindow = now;
+    lastAskAgentKey = agentKey;
 
     // Read-only memory index, fetched once and shared by both stages (a local
     // fs scan; one per ask, every few minutes — negligible). Null when memory
@@ -275,12 +329,12 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     // with, so it goes straight to a companionship line.
     let focus: string | null = null;
     if (!options.idle) {
-      focus = await assess(prev, memory);
+      focus = await assess(prev, memory, agent);
       if (focus === null) return null;
     }
 
     // Stage 2 compose.
-    return compose(reason, focus, memory);
+    return compose(reason, focus, memory, agent);
   }
 
   return {
@@ -308,6 +362,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       asking = false;
       recentRemarks = [];
       lastAskWindow = null;
+      lastAskAgentKey = null;
     },
   };
 }

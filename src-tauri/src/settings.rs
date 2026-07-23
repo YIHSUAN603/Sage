@@ -76,6 +76,12 @@ pub struct Settings {
     /// tools, conversation persistence). On by default.
     #[serde(default = "default_true")]
     pub memory_enabled: bool,
+    /// Observe the user's own coding-agent sessions (Claude Code / Codex): tail
+    /// their transcript JSONL and, for Claude, install a hook so the companion
+    /// can react to what they're doing in the terminal. Off by default (reads
+    /// ~/.claude and ~/.codex; privacy).
+    #[serde(default)]
+    pub observe_agents: bool,
 }
 
 fn default_proactive_cooldown() -> f64 {
@@ -129,6 +135,7 @@ impl Default for Settings {
             proactive_cooldown_minutes: default_proactive_cooldown(),
             proactive_max_per_hour: 0,
             memory_enabled: true,
+            observe_agents: false,
         }
     }
 }
@@ -226,5 +233,9 @@ mod tests {
 pub fn set_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), String> {
     let path = settings_path(&app)?;
     let json = serde_json::to_string_pretty(&settings).map_err(|e| e.to_string())?;
-    std::fs::write(path, json).map_err(|e| format!("write settings: {e}"))
+    std::fs::write(path, json).map_err(|e| format!("write settings: {e}"))?;
+    // Keep Sage's Claude hook in sync with the coding-agent observation switch.
+    // Idempotent, and best-effort: a hook-file problem must never fail the save.
+    let _ = crate::agent_watch::reconcile_claude_hook(&app, settings.observe_agents);
+    Ok(())
 }

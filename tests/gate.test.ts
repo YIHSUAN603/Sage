@@ -1,7 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import i18n, { i18nReady } from "../src/i18n/index.ts";
-import type { ChatMessage, Settings, StreamEvent } from "../src/ipc/contract.ts";
+import type {
+  AgentActivity,
+  ChatMessage,
+  Settings,
+  StreamEvent,
+} from "../src/ipc/contract.ts";
 import { DEFAULT_SETTINGS } from "../src/ipc/contract.ts";
 import { createMockIpc, type MockIpc, type MockIpcOptions } from "../src/ipc/mock.ts";
 import { buildMemoryIndexMessage } from "../src/memory/context.ts";
@@ -35,6 +40,7 @@ function createHarness(
   settingsOverride: Partial<Settings> = {},
   idle = false,
   memoryPrefix?: () => Promise<ChatMessage | null>,
+  agentActivity?: () => Promise<AgentActivity | null>,
 ): { gate: ReturnType<typeof createBubbleGate> } & Harness {
   const bubbles: Harness["bubbles"] = [];
   const settings: Settings = {
@@ -48,9 +54,12 @@ function createHarness(
     runObserve: createRunObserve(ipc, () => settings),
     onBubble: (text, reason) => bubbles.push({ text, reason }),
     memoryPrefix,
+    agentActivity,
   });
   return { gate, bubbles };
 }
+
+const agentActivityOf = (a: AgentActivity) => () => Promise.resolve(a);
 
 const sample = (app: string, title: string, at = 0): WindowSample => ({
   app_name: app,
@@ -373,4 +382,68 @@ test("idle mode: memory index still reaches the single compose prompt", async ()
   assert.equal(memory.role, "system");
   assert.match(memory.content as string, /coffee-order/);
   assert.equal(ipc.chatRequests[0].messages[2].role, "user");
+});
+
+// Coding-agent activity (Claude Code / Codex read from the transcript) rides
+// into both gate stages, so the companion can react to what the user is doing
+// in the terminal.
+const CLAUDE_WAITING: AgentActivity = {
+  source: "claude",
+  session: "sess-1",
+  state: "waiting_permission",
+  texts: ["使用者：fix the failing test", "助手：I'll run the suite."],
+  tool: "Bash: npm test",
+  updated_at: 1000,
+};
+
+test("agent activity rides into both the assess and compose prompts", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("在等你點頭呢，要放行嗎？")] }),
+  );
+  const { gate } = createHarness(ipc, {}, false, undefined, agentActivityOf(CLAUDE_WAITING));
+
+  gate.record(sample("iTerm2", "claude"));
+  await gate.forceAsk();
+
+  assert.equal(ipc.chatRequests.length, 2); // assess + compose
+  for (const req of ipc.chatRequests) {
+    const text = req.messages[req.messages.length - 1].content as string;
+    assert.match(text, /coding agent（claude）/); // the intro line
+    assert.match(text, /在等使用者批准某個動作/); // the localized state word
+    assert.match(text, /Bash: npm test/); // the last tool
+    assert.match(text, /^- 使用者：fix the failing test$/m); // turn text as a bullet
+  }
+});
+
+test("agent activity: idle mode uses it instead of the see-nothing framing", async () => {
+  const ipc = createMockIpc({ script: [reply("剛跑完啦，辛苦了！")] });
+  const { gate, bubbles } = createHarness(
+    ipc,
+    {},
+    true, // screen observation off — but agent observation on
+    undefined,
+    agentActivityOf({ ...CLAUDE_WAITING, state: "idle", tool: null }),
+  );
+
+  const replyText = await gate.forceAsk("使用者的 claude 剛跑完一段工作");
+
+  assert.equal(replyText, "剛跑完啦，辛苦了！");
+  assert.equal(bubbles.length, 1);
+  assert.equal(ipc.chatRequests.length, 1); // idle: compose only
+  const text = ipc.chatRequests[0].messages[1].content as string;
+  assert.match(text, /coding agent（claude）/); // agent block present
+  assert.match(text, /剛停下來/); // idle state word
+  assert.doesNotMatch(text, /看不到使用者的畫面/); // not the see-nothing framing
+});
+
+test("no agentActivity resolver: prompts carry no agent block", async () => {
+  const ipc = createMockIpc(observing({ script: [ASSESS_OK, reply("嗨")] }));
+  const { gate } = createHarness(ipc); // agentActivity omitted
+
+  gate.record(sample("Code", "main.rs"));
+  await gate.forceAsk();
+
+  for (const req of ipc.chatRequests) {
+    assert.doesNotMatch(req.messages[req.messages.length - 1].content as string, /coding agent/);
+  }
 });

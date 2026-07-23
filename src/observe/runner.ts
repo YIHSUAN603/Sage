@@ -15,6 +15,7 @@ import {
   type ContextEventPayload,
 } from "../events.ts";
 import i18n from "../i18n/index.ts";
+import type { AgentActivity } from "../ipc/contract.ts";
 import { hasTauri } from "../runtime.ts";
 import { requireIpc } from "../store/ipc.ts";
 import { useObservationStore } from "../store/observation.ts";
@@ -55,6 +56,26 @@ function devLog(...args: unknown[]): void {
   if (import.meta.env.DEV) console.info("[sage:observe]", ...args);
 }
 
+/**
+ * A coding-agent state change worth reacting to right away: the agent is now
+ * waiting for the user's permission, or it just finished a turn (running →
+ * idle). Everything else (mid-turn tool churn, staying idle) rides the normal
+ * cadence instead, so the companion doesn't natter at every log line.
+ */
+function agentTransitionWorthAsking(
+  prev: AgentActivity | null,
+  now: AgentActivity,
+): boolean {
+  const wasSame = prev?.session === now.session;
+  if (now.state === "waiting_permission") {
+    return !wasSame || prev?.state !== "waiting_permission";
+  }
+  if (now.state === "idle") {
+    return wasSame && prev?.state === "running";
+  }
+  return false;
+}
+
 export interface ObservationHandle {
   /** Whether observation is currently running (drives the pause badge). */
   observing: boolean;
@@ -79,19 +100,24 @@ interface DevHelpers {
 export function useObservation(): ObservationHandle {
   const observeEnabled = useSettingsStore((s) => s.settings.observe_enabled);
   const proactiveEnabled = useSettingsStore((s) => s.settings.proactive_enabled);
+  const agentsEnabled = useSettingsStore((s) => s.settings.observe_agents);
   const loaded = useSettingsStore((s) => s.loaded);
   const intervalSec = useSettingsStore((s) => s.settings.observe_interval);
   const devRef = useRef<DevHelpers | null>(null);
 
   const enabled = observeEnabled && loaded;
   const proactive = proactiveEnabled && loaded;
+  const agents = agentsEnabled && loaded;
 
   useEffect(() => {
-    if (!enabled && !proactive) return;
+    if (!enabled && !proactive && !agents) return;
     const ipc = requireIpc();
 
     // When each bubble was shown — drives the maxPerHour quota.
     let bubbleTimes: number[] = [];
+    // Freshest coding-agent activity, kept by the poller below and read by the
+    // gate at ask time. Null until the first poll (or when agents off).
+    let latestAgent: AgentActivity | null = null;
 
     // Shared by the gate and the dev test button: store + broadcast + show.
     const presentBubble = (text: string, reason: string) => {
@@ -127,6 +153,9 @@ export function useObservation(): ObservationHandle {
           return null;
         }
       },
+      // Coding-agent activity rides into both gate stages when agent
+      // observation is on; the poller below keeps `latestAgent` fresh.
+      agentActivity: agents ? async () => latestAgent : undefined,
       onDebug(message) {
         devLog("ask:", message);
         askTrail.push(message);
@@ -182,11 +211,12 @@ export function useObservation(): ObservationHandle {
     const askReasonKey = enabled ? "gate.observeReason" : "gate.idleReason";
     let askTimer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const runAsk = async () => {
-      // Nobody at the keyboard ⇒ nobody to talk to: skip the ask (and its
-      // LLM call) in both observation and idle-chatter mode, but keep the
-      // cadence — the next timer still fires. activityState never rejects
-      // per the contract; treat a failure as "active" just in case.
+
+    // One guarded ask: skip if nobody's at the keyboard (no one to talk to) or
+    // the hourly bubble quota is spent — both save the LLM call. Shared by the
+    // time-driven cadence and the coding-agent reactive trigger. activityState
+    // never rejects per the contract; treat a failure as "active" just in case.
+    const guardedAsk = async (reason: string): Promise<void> => {
       let idleSeconds = 0;
       try {
         idleSeconds = (await ipc.activityState()).idle_seconds;
@@ -194,24 +224,51 @@ export function useObservation(): ObservationHandle {
         idleSeconds = 0;
       }
       if (shouldSkipWhenIdle(idleSeconds)) {
-        devLog(
-          "ask skipped: user idle for",
-          idleSeconds,
-          "s (threshold",
-          IDLE_SKIP_SECONDS,
-          "s)",
-        );
-      } else {
-        const { maxPerHour } = await proactiveTuning();
-        if (underHourlyQuota(bubbleTimes, Date.now(), maxPerHour)) {
-          void gate.forceAsk(i18n.t(askReasonKey, { ns: "prompt" }));
-        } else {
-          devLog("ask skipped: hourly bubble quota reached (max", maxPerHour, "/h)");
-        }
+        devLog("ask skipped: user idle for", idleSeconds, "s (threshold", IDLE_SKIP_SECONDS, "s)");
+        return;
       }
+      const { maxPerHour } = await proactiveTuning();
+      if (!underHourlyQuota(bubbleTimes, Date.now(), maxPerHour)) {
+        devLog("ask skipped: hourly bubble quota reached (max", maxPerHour, "/h)");
+        return;
+      }
+      await gate.forceAsk(reason);
+    };
+
+    // Time-driven asks (proactive chatter only): look immediately when the loop
+    // starts, then on the cooldown-derived random cadence.
+    const runAsk = async () => {
+      await guardedAsk(i18n.t(askReasonKey, { ns: "prompt" }));
       const delay = await nextAskDelay();
       if (stopped) return;
       askTimer = setTimeout(() => void runAsk(), delay);
+    };
+
+    // Coding-agent reactive trigger: poll agent_activity; on a high-value
+    // transition (the agent just finished a turn, or is waiting for the user's
+    // permission) fire one guarded ask so the companion reacts in near-real
+    // time rather than only on the slow cadence. The gate still reads the room
+    // and may stay SILENT; the quota still caps how often it actually bubbles.
+    let agentTimer: ReturnType<typeof setTimeout> | null = null;
+    let prevAgent: AgentActivity | null = null;
+    const AGENT_POLL_MS = import.meta.env.DEV ? 1_500 : 3_000;
+    const pollAgent = async () => {
+      try {
+        latestAgent = await ipc.agentActivity();
+      } catch {
+        latestAgent = null;
+      }
+      const now = latestAgent;
+      if (proactive && now && agentTransitionWorthAsking(prevAgent, now)) {
+        const reasonKey =
+          now.state === "waiting_permission"
+            ? "gate.agentWaitingReason"
+            : "gate.agentFinishedReason";
+        void guardedAsk(i18n.t(reasonKey, { ns: "prompt", source: now.source }));
+      }
+      prevAgent = now;
+      if (stopped) return;
+      agentTimer = setTimeout(() => void pollAgent(), AGENT_POLL_MS);
     };
 
     if (enabled) {
@@ -229,15 +286,20 @@ export function useObservation(): ObservationHandle {
     if (proactive) {
       askTimer = setTimeout(() => void runAsk(), 0);
     }
+    if (agents) {
+      devLog("coding-agent observation started, poll", AGENT_POLL_MS, "ms");
+      agentTimer = setTimeout(() => void pollAgent(), 0);
+    }
     return () => {
       devLog(enabled ? "observation stopped" : "idle chatter stopped");
       devRef.current = null;
       stopped = true;
       if (askTimer) clearTimeout(askTimer);
+      if (agentTimer) clearTimeout(agentTimer);
       sampler?.stop();
       gate.reset();
     };
-  }, [enabled, proactive, intervalSec]);
+  }, [enabled, proactive, agents, intervalSec]);
 
   const devAvailable = import.meta.env.DEV && (enabled || proactive);
   return {
