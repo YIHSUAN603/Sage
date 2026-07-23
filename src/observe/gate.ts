@@ -24,6 +24,7 @@ import type {
   SemanticSnapshot,
 } from "../ipc/contract.ts";
 import { assessSystem, gateSystem } from "../store/persona.ts";
+import { parseMoveTag, type MoveIntent } from "../windows/wander.ts";
 import type { RunObserve } from "./runObserve.ts";
 
 /** One active-window observation, kept for the ask prompt's recent-activity list. */
@@ -40,6 +41,20 @@ export interface GateOptions {
   runObserve: RunObserve;
   /** A remark that passed the gate — show it as a bubble. */
   onBubble(text: string, reason: string): void;
+  /**
+   * Autonomous-movement decision from the compose call, when wander is on. The
+   * model appends a `MOVE: <intent>` tag to its reply; we decode it here and
+   * hand it to the wander engine. Fires even when the spoken text is SILENT —
+   * the companion can move without speaking. Never "stay" (that's a no-op).
+   */
+  onMove?(intent: MoveIntent, reason: string): void;
+  /**
+   * Whether autonomous movement is enabled (wander_enabled). Resolved fresh per
+   * ask so a settings toggle takes effect next cadence without rebuilding the
+   * gate. Off / absent ⇒ no MOVE instruction is added and any stray tag is
+   * ignored (intent forced to "stay").
+   */
+  wander?(): boolean;
   /** Samples kept for the recent-activity context. Default 60. */
   historyLimit?: number;
   /**
@@ -252,7 +267,13 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     focus: string | null,
     memory: ChatMessage | null,
     agent: AgentActivity | null,
-  ): Promise<string | null> {
+  ): Promise<{ text: string | null; intent: MoveIntent }> {
+    // Autonomous movement rides this call, independent of screen observation:
+    // when on, the model is asked to append a MOVE tag, which we decode below.
+    // In observe mode it decides from the screen; in idle mode it decides from
+    // persona / memory alone — either way the dependency is on the ask cadence,
+    // not on observation.
+    const wander = options.wander?.() ?? false;
     // The semantic snapshot is best-effort: a missing accessibility
     // permission, a sensitive window, or observation just turned off falls
     // back to the title-only prompt (PLAN privacy constraint). Idle mode
@@ -282,6 +303,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
           agentBlock ?? i18n.t("gate.idleContext", { ns: "prompt" }),
           sinceLastRemarkLine(),
           said,
+          wander ? i18n.t("gate.moveInstruction", { ns: "prompt" }) : null,
         ]
       : [
           i18n.t("gate.trigger", { ns: "prompt", reason }),
@@ -295,6 +317,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
           agentBlock,
           sinceLastRemarkLine(),
           said,
+          wander ? i18n.t("gate.moveInstruction", { ns: "prompt" }) : null,
         ];
     const text = lines.filter((line): line is string => Boolean(line)).join("\n");
 
@@ -307,19 +330,22 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     // The backend (OpenRouter / agent CLI) handles its own errors and returns
     // null on failure — proactive chatter must never surface an error to the user.
     const raw = await options.runObserve(messages, debug);
-    if (raw === null) return null;
+    if (raw === null) return { text: null, intent: "stay" };
 
-    const reply = raw.trim();
+    // Split off the movement tag first (when on), so a "SILENT" text with a
+    // MOVE tag still yields the intent — the pet moves without speaking.
+    const parsed = wander ? parseMoveTag(raw) : { text: raw, intent: "stay" as MoveIntent };
+    const reply = parsed.text.trim();
     if (!reply || reply.toUpperCase() === "SILENT") {
       debug(reply ? "模型回 SILENT（判斷沒什麼值得說）" : "模型回覆是空的");
-      return null;
+      return { text: null, intent: parsed.intent };
     }
-    debug(`模型回覆：${reply}`);
-    return reply;
+    debug(`模型回覆：${reply}${parsed.intent !== "stay" ? `（MOVE: ${parsed.intent}）` : ""}`);
+    return { text: reply, intent: parsed.intent };
   }
 
   /** The full two-stage pipeline for one ask. */
-  async function ask(reason: string): Promise<string | null> {
+  async function ask(reason: string): Promise<{ text: string | null; intent: MoveIntent }> {
     const win = currentWindow();
 
     // Coding-agent activity: fetched once, shared by the prefilter and both
@@ -345,7 +371,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       agentKey === lastAskAgentKey
     ) {
       debug("畫面未變且剛說過（靜音期內），跳過（不打任何 LLM）");
-      return null;
+      return { text: null, intent: "stay" };
     }
 
     const prev = lastAskWindow;
@@ -362,7 +388,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     let focus: string | null = null;
     if (!options.idle) {
       focus = await assess(prev, memory, agent);
-      if (focus === null) return null;
+      if (focus === null) return { text: null, intent: "stay" };
     }
 
     // Stage 2 compose.
@@ -375,18 +401,25 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
     },
 
     async forceAsk(reason = i18n.t("gate.forceAskReason", { ns: "prompt" })) {
-      if (asking) return null;
+      if (asking) {
+        // Another ask (the periodic cadence, or a rapid double-trigger) is still
+        // in flight. Leave a trail so a dev forceAsk doesn't look like a blank.
+        debug("上一個 ask 仍在進行中，這次略過（並行防護）");
+        return null;
+      }
       asking = true;
       try {
-        const reply = await ask(reason);
-        if (reply) {
-          options.onBubble(reply, reason);
+        const { text, intent } = await ask(reason);
+        if (text) {
+          options.onBubble(text, reason);
           lastRemarkAt = now();
-          recentRemarks = [...freshRemarks(), { text: reply, at: now() }].slice(
+          recentRemarks = [...freshRemarks(), { text, at: now() }].slice(
             -RECENT_REMARKS_LIMIT,
           );
         }
-        return reply;
+        // Movement is independent of speaking — a SILENT reply may still move.
+        if (intent !== "stay") options.onMove?.(intent, reason);
+        return text;
       } finally {
         asking = false;
       }

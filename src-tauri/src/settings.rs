@@ -82,6 +82,12 @@ pub struct Settings {
     /// ~/.claude and ~/.codex; privacy).
     #[serde(default)]
     pub observe_agents: bool,
+    /// Let the companion move around the desktop on its own. With observation
+    /// on, the model decides where to go (riding the proactive compose call);
+    /// otherwise it just ambles at random. Off by default. No-op where the
+    /// compositor forbids programmatic window moves (Wayland/WSLg).
+    #[serde(default)]
+    pub wander_enabled: bool,
 }
 
 fn default_proactive_cooldown() -> f64 {
@@ -136,6 +142,7 @@ impl Default for Settings {
             proactive_max_per_hour: 0,
             memory_enabled: true,
             observe_agents: false,
+            wander_enabled: false,
         }
     }
 }

@@ -21,6 +21,7 @@ import { useSettingsStore } from "../store/settings.ts";
 import { syncBubblePosition, toggleChatWindow } from "./chatToggle.ts";
 import { PetSprite } from "./PetSprite.tsx";
 import type { AvatarGesture } from "./petAtlas.ts";
+import { useWander, type MoveSignal } from "./useWander.ts";
 import { useWindowSizeMemory } from "./useWindowSizeMemory.ts";
 import "./avatar.css";
 
@@ -49,6 +50,10 @@ export function AvatarWindow() {
   const localMood = useChatStore(avatarMood);
   const [eventMood, setEventMood] = useState<AvatarMood | null>(null);
   const mood = eventMood ?? localMood;
+  // A ref mirror of the current mood, so the wander loop (set up once) can read
+  // the latest mood without re-subscribing on every change.
+  const moodRef = useRef(mood);
+  moodRef.current = mood;
 
   // Resizable pet: remember the user's chosen window size and scale the
   // sprite (SVG via --avatar-scale, spritesheet via PetSprite's scale prop)
@@ -147,9 +152,28 @@ export function AvatarWindow() {
 
   // S5.1–S5.3 run here — the avatar webview is the only one always visible,
   // so its timers never get throttled. Badge shows while observing.
-  const { observing, devForceAsk, devFakeBubble } = useObservation();
+  const { observing, devForceAsk, devFakeBubble, latestMove } = useObservation();
   const pauseObservation = () =>
     void useSettingsStore.getState().save({ observe_enabled: false });
+
+  // Autonomous movement. The wander engine strolls the window to a target;
+  // the AI's decision (from the observe/compose call) arrives via `latestMove`,
+  // which we mirror into a ref the loop consumes. Movement pauses while the user
+  // drags the pet or the mood is busy (thinking/talking).
+  const wanderEnabled = useSettingsStore((s) => s.settings.wander_enabled);
+  const intentRef = useRef<MoveSignal | null>(null);
+  useEffect(() => {
+    if (latestMove) intentRef.current = latestMove;
+  }, [latestMove]);
+  useWander({
+    enabled: wanderEnabled,
+    positioningWorks,
+    winRef,
+    logPos: logPosRef,
+    isPaused: () => dragging.current || moodRef.current !== "idle",
+    setGesture,
+    intentRef,
+  });
 
   useEffect(() => {
     if (!hasTauri()) return;
@@ -230,9 +254,10 @@ export function AvatarWindow() {
 
   // Long idle → run a lap (out then back). Keyed on mood only: leaving idle
   // clears the countdown and drops any leftover run gesture so the mood row
-  // (thinking/talking) takes over immediately.
+  // (thinking/talking) takes over immediately. Skipped when wander is on — the
+  // wander engine then owns the run gesture, and two would fight over it.
   useEffect(() => {
-    if (mood !== "idle") return;
+    if (wanderEnabled || mood !== "idle") return;
     idleTimer.current = setTimeout(() => {
       setGesture("run-right");
       lapTimer.current = setTimeout(() => {
@@ -245,7 +270,7 @@ export function AvatarWindow() {
       clearTimeout(lapTimer.current);
       setGesture((g) => (g === "run-left" || g === "run-right" ? null : g));
     };
-  }, [mood]);
+  }, [mood, wanderEnabled]);
 
   // Begin a drag (threshold crossed). Follow the pointer on the window so we
   // catch every move/release regardless of which path is active. `dx` is the

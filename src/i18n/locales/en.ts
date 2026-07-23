@@ -91,6 +91,11 @@ export default {
       proactiveEnable: "Proactive chatter",
       proactiveHint:
         "Your companion pipes up now and then to chat and cheer you on: the interval is the minimum gap in minutes; 0 for the cap = unlimited.",
+      wanderEnable: "Let the companion move around the desktop (off by default)",
+      wanderHint:
+        "The companion decides where to go by itself (no need for observation — with the screen off it draws on its personality; with observation on it also uses what's on screen), on top of ambling at random. Pauses while you drag it or it's talking. No effect where the system forbids moving windows (some Linux setups).",
+      wanderHintRandom:
+        "The companion ambles around the desktop at random. Turn on proactive chatter and it'll decide where to go by itself (observation optional). Pauses while you drag it or it's talking. No effect where the system forbids moving windows (some Linux setups).",
       observeEnable: "Reference the screen (observation, off by default)",
       observeHint:
         "When on, chatter references the current window's title and on-screen text; even with proactive chatter off, chats still carry your recent window context. When off, nothing on screen or about windows is ever captured.",
@@ -198,6 +203,8 @@ export default {
       agentWaitingReason: "The user's {{source}} is waiting for them to approve an action",
       idleContext:
         "(Desktop observation is off — you can't see the user's screen or windows and don't know what they're doing. Just keep them company like a friend: say hi, make small talk, or cheer them on, and never pretend you can see their work.)",
+      moveInstruction:
+        "You can also move around the desktop. On a NEW LAST LINE, output exactly `MOVE:` followed by one of: left, right, wander, corner, center, stay — where you'd like to go given what the user's doing (e.g. amble closer, drift to a corner to stay out of the way, roam a bit, or stay put). Use `stay` if you don't feel like moving. Put nothing else on that line, and never mention moving in your spoken remark.",
     },
     snapshot: {
       focused: "Focused element: {{detail}}",
