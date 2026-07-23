@@ -145,9 +145,9 @@ test("proactiveTuning: pet overrides settings, settings carry the defaults", asy
   });
   assert.deepEqual(await proactiveTuning(), { cooldownMinutes: 4, maxPerHour: 10 });
 
-  // No pet at all → settings values (which default to 2 min / unlimited).
+  // No pet at all → settings values (which default to 1 min / unlimited).
   useActivePet("");
-  assert.deepEqual(await proactiveTuning(), { cooldownMinutes: 2, maxPerHour: 0 });
+  assert.deepEqual(await proactiveTuning(), { cooldownMinutes: 1, maxPerHour: 0 });
 });
 
 test("mock updatePetSage rewrites persona/proactive and clears them when blank", async () => {

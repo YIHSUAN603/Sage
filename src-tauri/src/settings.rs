@@ -79,7 +79,7 @@ pub struct Settings {
 }
 
 fn default_proactive_cooldown() -> f64 {
-    2.0
+    1.0
 }
 
 fn default_interval() -> u32 {

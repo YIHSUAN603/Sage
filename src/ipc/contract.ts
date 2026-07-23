@@ -102,7 +102,7 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "auto",
   active_pet: "",
   custom_persona: "",
-  proactive_cooldown_minutes: 2,
+  proactive_cooldown_minutes: 1,
   proactive_max_per_hour: 0,
   memory_enabled: true,
 };
