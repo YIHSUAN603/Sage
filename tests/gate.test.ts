@@ -38,6 +38,7 @@ const ASSESS_OK = reply("卡在同一個檔案一陣子了，用打氣的語氣"
 
 interface Harness {
   bubbles: { text: string; reason: string }[];
+  moves: { intent: string; reason: string }[];
 }
 
 function createHarness(
@@ -49,6 +50,7 @@ function createHarness(
   agentActivity?: () => Promise<AgentActivity | null>,
 ): { gate: ReturnType<typeof createBubbleGate> } & Harness {
   const bubbles: Harness["bubbles"] = [];
+  const moves: Harness["moves"] = [];
   const settings: Settings = {
     ...DEFAULT_SETTINGS,
     observe_model: "test/observe-model",
@@ -59,11 +61,14 @@ function createHarness(
     idle,
     runObserve: createRunObserve(ipc, () => settings),
     onBubble: (text, reason) => bubbles.push({ text, reason }),
+    onMove: (intent, reason) => moves.push({ intent, reason }),
+    // Autonomous movement rides settings.wander_enabled, resolved per ask.
+    wander: () => settings.wander_enabled,
     memoryPrefix,
     now,
     agentActivity,
   });
-  return { gate, bubbles };
+  return { gate, bubbles, moves };
 }
 
 const agentActivityOf = (a: AgentActivity) => () => Promise.resolve(a);
@@ -539,4 +544,70 @@ test("no agentActivity resolver: prompts carry no agent block", async () => {
   for (const req of ipc.chatRequests) {
     assert.doesNotMatch(req.messages[req.messages.length - 1].content as string, /coding agent/);
   }
+});
+
+// Autonomous movement (wander_enabled): the compose prompt asks for a MOVE tag,
+// the reply's tag is decoded to an intent, and the spoken text is stripped of it.
+test("wander on: compose prompt asks to move and the MOVE tag becomes an intent", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("這段寫得不錯！\nMOVE: right")] }),
+  );
+  const { gate, bubbles, moves } = createHarness(ipc, { wander_enabled: true });
+
+  gate.record(sample("Code", "main.rs"));
+  const replyText = await gate.forceAsk();
+
+  // The tag is stripped from the spoken remark…
+  assert.equal(replyText, "這段寫得不錯！");
+  assert.deepEqual(bubbles, [{ text: "這段寫得不錯！", reason: bubbles[0].reason }]);
+  // …and surfaced as a movement intent.
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].intent, "right");
+  // The compose prompt (stage 2) carries the move instruction; assess doesn't.
+  assert.match(ipc.chatRequests[1].messages[1].content as string, /MOVE:/);
+  assert.doesNotMatch(ipc.chatRequests[0].messages[1].content as string, /MOVE:/);
+});
+
+test("wander on: a SILENT reply can still move (no bubble, but an intent)", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("SILENT\nMOVE: corner")] }),
+  );
+  const { gate, bubbles, moves } = createHarness(ipc, { wander_enabled: true });
+
+  gate.record(sample("Code", "main.rs"));
+  const replyText = await gate.forceAsk();
+
+  assert.equal(replyText, null); // stayed silent
+  assert.equal(bubbles.length, 0);
+  assert.equal(moves.length, 1); // but still moved
+  assert.equal(moves[0].intent, "corner");
+});
+
+test("wander off (default): no move instruction, a stray tag is ignored", async () => {
+  const ipc = createMockIpc(
+    observing({ script: [ASSESS_OK, reply("嗨\nMOVE: right")] }),
+  );
+  const { gate, bubbles, moves } = createHarness(ipc); // wander_enabled defaults false
+
+  gate.record(sample("Code", "main.rs"));
+  await gate.forceAsk();
+
+  assert.equal(moves.length, 0); // never fired
+  assert.doesNotMatch(ipc.chatRequests[1].messages[1].content as string, /MOVE:/);
+  // With wander off the reply is left untouched — the stray tag stays in text.
+  assert.equal(bubbles[0].text, "嗨\nMOVE: right");
+});
+
+test("wander on in idle mode: still moves (decoupled from observation)", async () => {
+  // Observation off (idle mode) but wander on: the model still gets the move
+  // instruction and its MOVE tag is honored — movement doesn't need the screen.
+  const ipc = createMockIpc(observing({ script: [reply("嗨嗨，去晃一圈！\nMOVE: wander")] }));
+  const { gate, bubbles, moves } = createHarness(ipc, { wander_enabled: true }, true);
+
+  await gate.forceAsk("定期跟使用者搭句話");
+
+  assert.equal(bubbles[0].text, "嗨嗨，去晃一圈！");
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0].intent, "wander");
+  assert.match(ipc.chatRequests[0].messages[1].content as string, /MOVE:/);
 });

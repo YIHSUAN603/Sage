@@ -89,6 +89,13 @@ export interface Settings {
    * observe_enabled (screen observation).
    */
   observe_agents: boolean;
+  /**
+   * Let the companion move around the desktop on its own. With observation on,
+   * the model decides where to go (riding the proactive compose call); with it
+   * off, the pet just ambles at random. Off by default. No-op where the
+   * compositor forbids programmatic window moves (Wayland/WSLg).
+   */
+  wander_enabled: boolean;
 }
 
 /** Must stay in sync with `impl Default for Settings` in settings.rs. */
@@ -114,6 +121,7 @@ export const DEFAULT_SETTINGS: Settings = {
   proactive_max_per_hour: 0,
   memory_enabled: true,
   observe_agents: false,
+  wander_enabled: false,
 };
 
 // ---------------------------------------------------------------------------

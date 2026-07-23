@@ -7,7 +7,7 @@
 // see-nothing small-talk prompt; observe-only ⇒ silent sampling for chat
 // context, no bubbles). Asks are skipped while the user is away from the
 // keyboard.
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BUBBLE_EVENT,
   CONTEXT_EVENT,
@@ -21,6 +21,7 @@ import { requireIpc } from "../store/ipc.ts";
 import { useObservationStore } from "../store/observation.ts";
 import { useSettingsStore } from "../store/settings.ts";
 import { showBubbleWindow } from "../windows/chatToggle.ts";
+import type { MoveSignal } from "../windows/useWander.ts";
 import { proactiveTuning } from "../store/persona.ts";
 import { buildMemoryIndexMessage } from "../memory/context.ts";
 import { createBubbleGate } from "./gate.ts";
@@ -83,6 +84,12 @@ export interface ObservationHandle {
   devForceAsk: (() => void) | null;
   /** Dev builds only: pop a fake bubble without touching the API. */
   devFakeBubble: (() => void) | null;
+  /**
+   * Latest autonomous-movement decision from the observe/compose call (when
+   * wander is on), or null. The avatar window feeds this to the wander engine;
+   * `seq` bumps on every decision so a repeat of the same direction still fires.
+   */
+  latestMove: MoveSignal | null;
 }
 
 interface DevHelpers {
@@ -104,6 +111,12 @@ export function useObservation(): ObservationHandle {
   const loaded = useSettingsStore((s) => s.loaded);
   const intervalSec = useSettingsStore((s) => s.settings.observe_interval);
   const devRef = useRef<DevHelpers | null>(null);
+  // Latest AI movement decision, surfaced to the avatar window's wander engine.
+  const [latestMove, setLatestMove] = useState<MoveSignal | null>(null);
+  const moveSeq = useRef(0);
+  // The most recent decoded intent, read synchronously by the dev test button
+  // (state updates lag a render, so we keep a ref alongside).
+  const lastMoveIntent = useRef<string | null>(null);
 
   const enabled = observeEnabled && loaded;
   const proactive = proactiveEnabled && loaded;
@@ -156,6 +169,16 @@ export function useObservation(): ObservationHandle {
       // Coding-agent activity rides into both gate stages when agent
       // observation is on; the poller below keeps `latestAgent` fresh.
       agentActivity: agents ? async () => latestAgent : undefined,
+      // Autonomous movement rides the compose call: when wander is on the model
+      // appends a MOVE tag, decoded here and pushed to the avatar's wander
+      // engine. Resolved fresh so toggling wander takes effect next cadence.
+      wander: () => useSettingsStore.getState().settings.wander_enabled,
+      onMove: (intent) => {
+        moveSeq.current += 1;
+        lastMoveIntent.current = intent;
+        setLatestMove({ intent, seq: moveSeq.current });
+        devLog("move:", intent);
+      },
       onDebug(message) {
         devLog("ask:", message);
         askTrail.push(message);
@@ -167,13 +190,20 @@ export function useObservation(): ObservationHandle {
         forceAsk() {
           devLog("forceAsk: asking the model now…");
           askTrail = [];
+          const seqBefore = moveSeq.current;
           void gate.forceAsk("開發測試：立即觀察一次").then((reply) => {
-            // A genuine reply already bubbled via onBubble — surface the
-            // silent/error case too, with the diagnostic trail, so the
-            // tester sees exactly which step went sideways.
-            if (!reply) {
-              presentBubble(`（測試）${askTrail.join("；") || "沒有任何診斷訊息"}`, "dev forceAsk");
+            const moved = moveSeq.current > seqBefore;
+            // A genuine reply already bubbled via onBubble. Otherwise surface
+            // what happened: a silent-but-moved ask (wander!) still "did
+            // something", so report the intent; then the diagnostic trail.
+            if (reply) {
+              if (moved) devLog("forceAsk: also moved →", lastMoveIntent.current);
+              return;
             }
+            const parts: string[] = [];
+            if (moved) parts.push(`沒出聲但移動了：${lastMoveIntent.current}`);
+            if (askTrail.length) parts.push(askTrail.join("；"));
+            presentBubble(`（測試）${parts.join(" ｜ ") || "沒有任何診斷訊息"}`, "dev forceAsk");
           });
         },
         fakeBubble() {
@@ -306,5 +336,6 @@ export function useObservation(): ObservationHandle {
     observing: enabled,
     devForceAsk: devAvailable ? () => devRef.current?.forceAsk() : null,
     devFakeBubble: devAvailable ? () => devRef.current?.fakeBubble() : null,
+    latestMove,
   };
 }

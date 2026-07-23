@@ -18,6 +18,7 @@ export function ProactiveSection({ draft, patch, petSage, setPetSage }: Props) {
     petSage && petSage.id === draft.active_pet.trim() ? petSage : null;
 
   return (
+    <>
     <div className="field">
       <div className="field field-row">
         <label className="switch-label">
@@ -99,5 +100,22 @@ export function ProactiveSection({ draft, patch, petSage, setPetSage }: Props) {
           : t("settings.proactiveHint")}
       </span>
     </div>
+
+      <div className="field">
+        <label className="switch-label">
+          <input
+            type="checkbox"
+            checked={draft.wander_enabled}
+            onChange={(e) => patch({ wander_enabled: e.currentTarget.checked })}
+          />
+          <span>{t("settings.wanderEnable")}</span>
+        </label>
+        <span className="field-hint">
+          {draft.proactive_enabled
+            ? t("settings.wanderHint")
+            : t("settings.wanderHintRandom")}
+        </span>
+      </div>
+    </>
   );
 }
