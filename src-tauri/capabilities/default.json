@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the avatar + chat + bubble companion windows",
-  "windows": ["avatar", "chat", "bubble"],
+  "description": "Capability for the avatar + chat + bubble + settings windows",
+  "windows": ["avatar", "chat", "bubble", "settings"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -13,9 +13,13 @@
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-position",
+    "core:window:allow-set-size",
+    "core:window:allow-start-resize-dragging",
     "core:window:allow-outer-position",
     "core:window:allow-outer-size",
     "core:window:allow-set-focus",
+    "core:window:allow-set-title",
+    "core:window:allow-unminimize",
     "core:window:allow-set-always-on-top",
     "core:window:allow-is-visible",
     "core:window:allow-current-monitor"

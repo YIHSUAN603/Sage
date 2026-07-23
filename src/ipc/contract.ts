@@ -141,6 +141,12 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
   /** Present on role:"tool" messages — the ToolCall id being answered. */
   tool_call_id?: string;
+  /**
+   * UI-only metadata: when the message landed (epoch ms). Stamped by the chat
+   * store, persisted with the session, stripped before any request reaches a
+   * model. Absent on messages saved before 0.5 — the UI then shows no time.
+   */
+  ts?: number;
 }
 
 /** OpenRouter `tools` array entry (what tools/registry.ts produces). */

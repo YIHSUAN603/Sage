@@ -110,6 +110,60 @@ test("memory_enabled: index is injected and memory tools are registered", async 
   assert.ok(ipc.calls.some((c) => c.command === "list_memories"));
 });
 
+test("send() stamps ts on visible messages but strips it from requests", async () => {
+  const ipc = setup(OPENROUTER, { files: { "/tmp/a.txt": "hello" } });
+  await useChatStore.getState().send("read the file");
+
+  for (const message of useChatStore.getState().messages) {
+    assert.equal(typeof message.ts, "number", `expected ts on ${message.role}`);
+  }
+  // No request message may carry the UI-only ts field.
+  for (const req of ipc.chatRequests) {
+    for (const message of req.messages) {
+      assert.ok(!("ts" in message), "ts leaked into a model request");
+    }
+  }
+});
+
+test("regenerate() drops the last answer and reruns the last user turn", async () => {
+  const ipc = setup(OPENROUTER, { files: { "/tmp/a.txt": "hello" } });
+  await useChatStore.getState().send("read the file");
+  const afterSend = useChatStore.getState().messages;
+  const requestsAfterSend = ipc.chatRequests.length;
+  assert.ok(afterSend.length > 1, "expected a full turn after send");
+
+  await useChatStore.getState().regenerate();
+  const messages = useChatStore.getState().messages;
+  // Exactly one user message survives — regenerate must not re-append it.
+  assert.equal(messages.filter((m) => m.role === "user").length, 1);
+  // The rerun produced a fresh full turn (mock script wraps around).
+  assert.equal(messages.length, afterSend.length);
+  // The rerun request ends with the original user text.
+  const rerun = ipc.chatRequests[requestsAfterSend];
+  const tail = rerun.messages[rerun.messages.length - 1];
+  assert.equal(tail.role, "user");
+  assert.equal(tail.content, "read the file");
+  // Persistence matches the visible history after the rerun.
+  const saves = ipc.calls.filter((c) => c.command === "save_session");
+  assert.deepEqual(saves[saves.length - 1].args, messages);
+});
+
+test("regenerate() is a no-op mid-stream", async () => {
+  const ipc = setup(OPENROUTER, { session: [{ role: "user", content: "hi" }] });
+  await useChatStore.getState().hydrate();
+  useChatStore.setState({ streaming: true });
+  await useChatStore.getState().regenerate();
+  assert.equal(ipc.chatRequests.length, 0);
+});
+
+test("regenerate() is a no-op without any user message", async () => {
+  const ipc = setup(OPENROUTER);
+  useChatStore.getState().openFromBubble("saw you're coding!");
+  await useChatStore.getState().regenerate();
+  assert.equal(ipc.chatRequests.length, 0);
+  assert.equal(useChatStore.getState().messages.length, 1);
+});
+
 test("memory_enabled off: no index injection and no memory tools", async () => {
   const ipc = setup(
     { ...OPENROUTER, memory_enabled: false },

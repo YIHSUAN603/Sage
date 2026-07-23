@@ -3,8 +3,9 @@
 // two-stage "read the room, then speak" pipeline so proactive chatter feels
 // like a companion instead of a blind single-shot:
 //
-//   [prefilter | no LLM]  same window as last ask AND we just spoke ⇒ skip
-//                         (never keep nattering at an unchanged screen)
+//   [prefilter | no LLM]  same window as last ask AND we spoke within the
+//                         mute window ⇒ skip (never keep nattering at an
+//                         unchanged screen — but silence does expire)
 //   [stage 1  | cheap LLM, no snapshot]  assess: is now a good moment to chime
 //                         in, and in what register? ⇒ SILENT or a focus hint
 //   [stage 2  | LLM + snapshot]  compose: read the semantic snapshot (screen
@@ -49,6 +50,8 @@ export interface GateOptions {
    * tools (proactive chatter is observe-only, i.e. read-only).
    */
   memoryPrefix?(): Promise<ChatMessage | null>;
+  /** Clock, injectable for tests. Default Date.now. */
+  now?(): number;
   /** Diagnostic trace of each ask (assess/snapshot/stream error/reply). */
   onDebug?(message: string): void;
 }
@@ -67,6 +70,12 @@ export interface BubbleGate {
 
 /** How many recent remarks to feed back into the prompts (repetition guard). */
 const RECENT_REMARKS_LIMIT = 5;
+
+/** Same-window prefilter mute: how long after speaking an unchanged window stays skipped. */
+export const SAME_WINDOW_MUTE_MS = 10 * 60_000;
+
+/** How long a past remark keeps feeding the repetition guard before it expires. */
+export const REMARK_TTL_MS = 30 * 60_000;
 
 /**
  * Render a semantic snapshot as prompt lines, skipping empty fields — the
@@ -96,12 +105,16 @@ function renderSnapshot(snapshot: SemanticSnapshot): string {
 
 export function createBubbleGate(options: GateOptions): BubbleGate {
   const historyLimit = options.historyLimit ?? 60;
+  const now = options.now ?? Date.now;
 
   let samples: WindowSample[] = [];
   let asking = false;
   // Session-only memory (never persisted) so the companion knows what it just
   // said (avoid repeats / monotony) and which window it last spoke about.
-  let recentRemarks: string[] = [];
+  // Both decay with time — old remarks stop suppressing new ones, and the
+  // same-window mute expires — so a long session never trends to silence.
+  let recentRemarks: { text: string; at: number }[] = [];
+  let lastRemarkAt: number | null = null;
   let lastAskWindow: WindowSample | null = null;
 
   const debug = options.onDebug ?? (() => {});
@@ -118,11 +131,25 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       .map((s) => `- ${windowLabel(s)}`)
       .join("\n");
 
+  /** Drop remarks older than REMARK_TTL_MS; what's left still guards repetition. */
+  const freshRemarks = (): { text: string; at: number }[] => {
+    recentRemarks = recentRemarks.filter((r) => now() - r.at < REMARK_TTL_MS);
+    return recentRemarks;
+  };
+
   /** The "you recently said…" repetition-guard block, or null when empty. */
   const recentlySaidBlock = (): string | null => {
-    if (recentRemarks.length === 0) return null;
-    const lines = recentRemarks.map((r) => `- ${r}`).join("\n");
+    const remarks = freshRemarks();
+    if (remarks.length === 0) return null;
+    const lines = remarks.map((r) => `- ${r.text}`).join("\n");
     return i18n.t("gate.recentlySaid", { ns: "prompt", lines });
+  };
+
+  /** "You last spoke ~N minutes ago" — license to re-engage after a long silence. */
+  const sinceLastRemarkLine = (): string | null => {
+    if (lastRemarkAt === null) return null;
+    const minutes = Math.max(1, Math.round((now() - lastRemarkAt) / 60_000));
+    return i18n.t("gate.sinceLastRemark", { ns: "prompt", minutes });
   };
 
   /** A one-line description of what changed since the last ask, or null. */
@@ -154,6 +181,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       i18n.t("gate.recentActivity", { ns: "prompt" }),
       recentActivityLines(),
       change,
+      sinceLastRemarkLine(),
       said,
     ]
       .filter((line): line is string => Boolean(line))
@@ -210,6 +238,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       ? [
           i18n.t("gate.trigger", { ns: "prompt", reason }),
           i18n.t("gate.idleContext", { ns: "prompt" }),
+          sinceLastRemarkLine(),
           said,
         ]
       : [
@@ -221,6 +250,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
             ? i18n.t("gate.withSemantic", { ns: "prompt" })
             : i18n.t("gate.titleOnly", { ns: "prompt" }),
           snapshot ? renderSnapshot(snapshot) : null,
+          sinceLastRemarkLine(),
           said,
         ];
     const text = lines.filter((line): line is string => Boolean(line)).join("\n");
@@ -247,24 +277,26 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
 
   /** The full two-stage pipeline for one ask. */
   async function ask(reason: string): Promise<string | null> {
-    const now = currentWindow();
+    const win = currentWindow();
 
     // Prefilter (observe mode only): don't keep nattering at a screen that
-    // hasn't changed when we already spoke recently.
+    // hasn't changed when we spoke within the mute window — after that,
+    // silence expires and the ask goes through even on an unchanged screen.
     if (
       !options.idle &&
       lastAskWindow &&
-      now &&
-      lastAskWindow.app_name === now.app_name &&
-      lastAskWindow.title === now.title &&
-      recentRemarks.length > 0
+      win &&
+      lastAskWindow.app_name === win.app_name &&
+      lastAskWindow.title === win.title &&
+      lastRemarkAt !== null &&
+      now() - lastRemarkAt < SAME_WINDOW_MUTE_MS
     ) {
-      debug("畫面未變且剛說過，跳過（不打任何 LLM）");
+      debug("畫面未變且剛說過（靜音期內），跳過（不打任何 LLM）");
       return null;
     }
 
     const prev = lastAskWindow;
-    lastAskWindow = now;
+    lastAskWindow = win;
 
     // Read-only memory index, fetched once and shared by both stages (a local
     // fs scan; one per ask, every few minutes — negligible). Null when memory
@@ -295,7 +327,10 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
         const reply = await ask(reason);
         if (reply) {
           options.onBubble(reply, reason);
-          recentRemarks = [...recentRemarks, reply].slice(-RECENT_REMARKS_LIMIT);
+          lastRemarkAt = now();
+          recentRemarks = [...freshRemarks(), { text: reply, at: now() }].slice(
+            -RECENT_REMARKS_LIMIT,
+          );
         }
         return reply;
       } finally {
@@ -307,6 +342,7 @@ export function createBubbleGate(options: GateOptions): BubbleGate {
       samples = [];
       asking = false;
       recentRemarks = [];
+      lastRemarkAt = null;
       lastAskWindow = null;
     },
   };

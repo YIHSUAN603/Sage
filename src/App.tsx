@@ -6,14 +6,17 @@ import { useSettingsSync } from "./store/settingsSync.ts";
 import { AvatarWindow } from "./windows/AvatarWindow.tsx";
 import { BubbleWindow } from "./windows/BubbleWindow.tsx";
 import { ChatWindow } from "./windows/ChatWindow.tsx";
+import { SettingsWindow } from "./windows/SettingsWindow.tsx";
 import { useCompanionTheme } from "./windows/useCompanionTheme.ts";
 import "./App.css";
 
-export type SageWindowKind = "avatar" | "chat" | "bubble";
+export type SageWindowKind = "avatar" | "chat" | "bubble" | "settings";
 
 export function windowKindFromSearch(search: string): SageWindowKind {
   const kind = new URLSearchParams(search).get("window");
-  return kind === "chat" || kind === "bubble" ? kind : "avatar";
+  return kind === "chat" || kind === "bubble" || kind === "settings"
+    ? kind
+    : "avatar";
 }
 
 interface Props {
@@ -31,6 +34,8 @@ function App({ ipc }: Props) {
         <ChatWindow />
       ) : kind === "bubble" ? (
         <BubbleWindow />
+      ) : kind === "settings" ? (
+        <SettingsWindow />
       ) : (
         <AvatarWindow />
       )}
