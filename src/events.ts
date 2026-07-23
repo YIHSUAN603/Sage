@@ -32,3 +32,7 @@ export interface BubbleOpenEventPayload {
 
 /** any window → all: settings were saved; reload your settings store. */
 export const SETTINGS_EVENT = "sage:settings";
+
+/** any window → settings: the settings window is being opened — reset the
+ * draft from the store and reload pickers (models / pets / records). */
+export const SETTINGS_WINDOW_OPEN_EVENT = "sage:settings-open";

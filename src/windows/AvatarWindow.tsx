@@ -3,7 +3,13 @@
 // a click (mousedown/mouseup within a small threshold) toggles the chat
 // bubble. Mood (idle/thinking/talking) is driven by the chat window over a
 // Tauri event, falling back to the local chat store in pure-browser dev.
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { useObservation } from "../observe/runner.ts";
 import { BUBBLE_EVENT } from "../events.ts";
@@ -15,10 +21,21 @@ import { useSettingsStore } from "../store/settings.ts";
 import { syncBubblePosition, toggleChatWindow } from "./chatToggle.ts";
 import { PetSprite } from "./PetSprite.tsx";
 import type { AvatarGesture } from "./petAtlas.ts";
+import { useWindowSizeMemory } from "./useWindowSizeMemory.ts";
 import "./avatar.css";
 
 /** Movement beyond this many px turns a press into a window drag. */
 const DRAG_THRESHOLD = 4;
+
+// The window size the sprite artwork was laid out for (tauri.conf.json's
+// avatar width/height). Resizing scales everything by the same ratio.
+const BASE_WIDTH = 208;
+const BASE_HEIGHT = 228;
+
+/** Uniform sprite scale for the current window size (aspect-safe via min). */
+function currentScale(): number {
+  return Math.min(window.innerWidth / BASE_WIDTH, window.innerHeight / BASE_HEIGHT);
+}
 
 // Transient gesture timings (ms). Jump lasts one jumping cycle; after this much
 // idle the pet runs a lap (out then back, each half this long).
@@ -32,6 +49,22 @@ export function AvatarWindow() {
   const localMood = useChatStore(avatarMood);
   const [eventMood, setEventMood] = useState<AvatarMood | null>(null);
   const mood = eventMood ?? localMood;
+
+  // Resizable pet: remember the user's chosen window size and scale the
+  // sprite (SVG via --avatar-scale, spritesheet via PetSprite's scale prop)
+  // to whatever the window currently is.
+  useWindowSizeMemory("sage.avatar-size", 120, 132);
+  const [avatarScale, setAvatarScale] = useState(currentScale);
+  useEffect(() => {
+    const onResize = () => setAvatarScale(currentScale());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+  const startResizeDrag = async () => {
+    if (!hasTauri()) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startResizeDragging("SouthEast");
+  };
 
   // Transient gesture that briefly overrides the mood row on the spritesheet
   // (drag → run, bubble → jump, long idle → run a lap). Fixed-duration gestures
@@ -305,7 +338,10 @@ export function AvatarWindow() {
   };
 
   return (
-    <div className="avatar-stage">
+    <div
+      className="avatar-stage"
+      style={{ "--avatar-scale": avatarScale } as CSSProperties}
+    >
       {observing && (
         <button
           type="button"
@@ -339,7 +375,12 @@ export function AvatarWindow() {
       >
         <div className="sprite-bob">
           {atlasUrl ? (
-            <PetSprite atlasUrl={atlasUrl} mood={mood} gesture={gesture} />
+            <PetSprite
+              atlasUrl={atlasUrl}
+              mood={mood}
+              gesture={gesture}
+              scale={0.88 * avatarScale}
+            />
           ) : (
           <svg
             className="sprite-svg"
@@ -439,6 +480,15 @@ export function AvatarWindow() {
         </div>
         <div className="sprite-shadow" aria-hidden />
       </div>
+      <div
+        className="avatar-resize-grip"
+        title={t("avatar.resizeHandle")}
+        aria-hidden
+        onPointerDown={(e) => {
+          e.stopPropagation(); // never turn a resize into a pet drag/click
+          void startResizeDrag();
+        }}
+      />
     </div>
   );
 }

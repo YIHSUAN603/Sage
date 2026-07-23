@@ -11,7 +11,12 @@ import { DEFAULT_SETTINGS } from "../src/ipc/contract.ts";
 import { createMockIpc, type MockIpc, type MockIpcOptions } from "../src/ipc/mock.ts";
 import { buildMemoryIndexMessage } from "../src/memory/context.ts";
 import { createRunObserve } from "../src/observe/runObserve.ts";
-import { createBubbleGate, type WindowSample } from "../src/observe/gate.ts";
+import {
+  createBubbleGate,
+  REMARK_TTL_MS,
+  SAME_WINDOW_MUTE_MS,
+  type WindowSample,
+} from "../src/observe/gate.ts";
 
 // Assertions below match the zh-TW wording — pin the locale regardless of the
 // machine the tests run on.
@@ -40,6 +45,7 @@ function createHarness(
   settingsOverride: Partial<Settings> = {},
   idle = false,
   memoryPrefix?: () => Promise<ChatMessage | null>,
+  now?: () => number,
   agentActivity?: () => Promise<AgentActivity | null>,
 ): { gate: ReturnType<typeof createBubbleGate> } & Harness {
   const bubbles: Harness["bubbles"] = [];
@@ -54,6 +60,7 @@ function createHarness(
     runObserve: createRunObserve(ipc, () => settings),
     onBubble: (text, reason) => bubbles.push({ text, reason }),
     memoryPrefix,
+    now,
     agentActivity,
   });
   return { gate, bubbles };
@@ -256,7 +263,7 @@ test("idle mode: single stage, never reads a snapshot — pure companionship", a
   assert.doesNotMatch(content as string, /視窗標題/); // not the observation framing
 });
 
-test("prefilter: unchanged window after speaking skips without any LLM call", async () => {
+test("prefilter: unchanged window skips within the mute window, no LLM call", async () => {
   const ipc = createMockIpc(
     observing({ script: [ASSESS_OK, reply("先講一句")] }),
   );
@@ -273,6 +280,91 @@ test("prefilter: unchanged window after speaking skips without any LLM call", as
   assert.equal(second, null);
   assert.equal(ipc.chatRequests.length, 2); // unchanged
   assert.equal(bubbles.length, 1);
+});
+
+test("prefilter mute expires: unchanged window asks again, with the since-line", async () => {
+  const ipc = createMockIpc(
+    observing({
+      script: [ASSESS_OK, reply("先講一句"), ASSESS_OK, reply("又來一句")],
+    }),
+  );
+  let clock = 0;
+  const { gate, bubbles } = createHarness(ipc, {}, false, undefined, () => clock);
+
+  gate.record(sample("Code", "a.ts"));
+  assert.equal(await gate.forceAsk(), "先講一句");
+  // First ask: nothing was said before it, so no since-line anywhere.
+  assert.doesNotMatch(ipc.chatRequests[0].messages[1].content as string, /你上次開口/);
+
+  // Mute window elapsed on the very same window → the ask goes through again.
+  clock = SAME_WINDOW_MUTE_MS;
+  gate.record(sample("Code", "a.ts", clock));
+  assert.equal(await gate.forceAsk(), "又來一句");
+  assert.equal(ipc.chatRequests.length, 4); // assess#2 + compose#2 happened
+  assert.equal(bubbles.length, 2);
+
+  // Both second-ask prompts carry the "you last spoke ~N minutes ago" license.
+  assert.match(ipc.chatRequests[2].messages[1].content as string, /你上次開口大約是 10 分鐘前/);
+  assert.match(ipc.chatRequests[3].messages[1].content as string, /你上次開口大約是 10 分鐘前/);
+});
+
+test("repetition guard decays: remarks older than the TTL leave the prompts", async () => {
+  const ipc = createMockIpc(
+    observing({
+      script: [ASSESS_OK, reply("第一句話"), ASSESS_OK, reply("第二句話")],
+    }),
+  );
+  let clock = 0;
+  const { gate } = createHarness(ipc, {}, false, undefined, () => clock);
+
+  gate.record(sample("Code", "a.ts"));
+  assert.equal(await gate.forceAsk(), "第一句話");
+
+  // Past the TTL, in a different window: the old remark no longer suppresses.
+  clock = REMARK_TTL_MS + 60_000;
+  gate.record(sample("Slack", "#general", clock));
+  assert.equal(await gate.forceAsk(), "第二句話");
+
+  for (const req of [ipc.chatRequests[2], ipc.chatRequests[3]]) {
+    const text = req.messages[1].content as string;
+    assert.doesNotMatch(text, /第一句話/);
+    assert.doesNotMatch(text, /你最近已經說過這些/);
+    assert.match(text, /你上次開口大約是 31 分鐘前/); // elapsed silence still shown
+  }
+});
+
+test("since-line minutes floor at 1 for a just-spoken remark", async () => {
+  const ipc = createMockIpc(
+    observing({
+      script: [ASSESS_OK, reply("第一句話"), ASSESS_OK, reply("第二句話")],
+    }),
+  );
+  let clock = 0;
+  const { gate } = createHarness(ipc, {}, false, undefined, () => clock);
+
+  gate.record(sample("Code", "a.ts"));
+  await gate.forceAsk();
+
+  // 10 s later in a new window (dodges the prefilter): still "1 分鐘前".
+  clock = 10_000;
+  gate.record(sample("Slack", "#general", clock));
+  await gate.forceAsk();
+  assert.match(ipc.chatRequests[2].messages[1].content as string, /你上次開口大約是 1 分鐘前/);
+});
+
+test("idle mode: the since-line reaches the single compose prompt too", async () => {
+  const ipc = createMockIpc({
+    script: [reply("嗨嗨"), reply("還在忙嗎？")],
+  });
+  let clock = 0;
+  const { gate } = createHarness(ipc, {}, true, undefined, () => clock);
+
+  assert.equal(await gate.forceAsk(), "嗨嗨");
+  assert.doesNotMatch(ipc.chatRequests[0].messages[1].content as string, /你上次開口/);
+
+  clock = 40 * 60_000;
+  assert.equal(await gate.forceAsk(), "還在忙嗎？");
+  assert.match(ipc.chatRequests[1].messages[1].content as string, /你上次開口大約是 40 分鐘前/);
 });
 
 test("repetition guard: the last remark is fed into the next ask's prompts", async () => {
@@ -400,7 +492,7 @@ test("agent activity rides into both the assess and compose prompts", async () =
   const ipc = createMockIpc(
     observing({ script: [ASSESS_OK, reply("在等你點頭呢，要放行嗎？")] }),
   );
-  const { gate } = createHarness(ipc, {}, false, undefined, agentActivityOf(CLAUDE_WAITING));
+  const { gate } = createHarness(ipc, {}, false, undefined, undefined, agentActivityOf(CLAUDE_WAITING));
 
   gate.record(sample("iTerm2", "claude"));
   await gate.forceAsk();
@@ -421,6 +513,7 @@ test("agent activity: idle mode uses it instead of the see-nothing framing", asy
     ipc,
     {},
     true, // screen observation off — but agent observation on
+    undefined,
     undefined,
     agentActivityOf({ ...CLAUDE_WAITING, state: "idle", tool: null }),
   );

@@ -1,7 +1,7 @@
 // S4.2 — The speech-bubble chat window: frameless rounded card that sits
 // next to the avatar. Streams live via the chat store and broadcasts the
 // avatar mood over a Tauri event so the avatar webview can animate.
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   nextPermission,
@@ -11,24 +11,20 @@ import {
 } from "../components/agentPermission.ts";
 import { Composer } from "../components/Composer.tsx";
 import { MessageList } from "../components/MessageList.tsx";
-import { SettingsDialog } from "../components/SettingsDialog.tsx";
 import {
   BUBBLE_OPEN_EVENT,
   CONTEXT_EVENT,
   type BubbleOpenEventPayload,
   type ContextEventPayload,
 } from "../events.ts";
-import { fetchFreeObserveModels, fetchFreeToolModels } from "../llm/models.ts";
 import { hasTauri } from "../runtime.ts";
 import { avatarMood, MOOD_EVENT, useChatStore } from "../store/chat.ts";
+import { useCompanionName } from "../store/companion.ts";
+import { useWindowSizeMemory } from "./useWindowSizeMemory.ts";
 import { useObservationStore } from "../store/observation.ts";
 import { hasApiKey, useSettingsStore } from "../store/settings.ts";
+import { openSettingsWindow } from "./settingsWindow.ts";
 import "./chat.css";
-
-// Module-level so the references stay stable across renders (the dialog's
-// load effect depends on them).
-const loadChatModels = () => fetchFreeToolModels();
-const loadObserveModels = () => fetchFreeObserveModels();
 
 export function ChatWindow() {
   const { t } = useTranslation();
@@ -37,14 +33,18 @@ export function ChatWindow() {
   const partial = useChatStore((s) => s.partial);
   const error = useChatStore((s) => s.error);
   const send = useChatStore((s) => s.send);
+  const regenerate = useChatStore((s) => s.regenerate);
   const stop = useChatStore((s) => s.stop);
   const clear = useChatStore((s) => s.clear);
   const clearError = useChatStore((s) => s.clearError);
   const mood = useChatStore(avatarMood);
+  const companionName = useCompanionName();
   const keyReady = useSettingsStore(hasApiKey);
   const settings = useSettingsStore((s) => s.settings);
   const saveSettings = useSettingsStore((s) => s.save);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Restore the remembered window size and track user resizes.
+  // Mins mirror the chat window's minWidth/minHeight in tauri.conf.json.
+  useWindowSizeMemory("sage.chat-size", 300, 380);
 
   // Quick permission toggle for the local agent CLI: cycles the tier and saves
   // immediately (the next turn's `claude`/`codex` spawn picks it up in Rust).
@@ -107,13 +107,21 @@ export function ChatWindow() {
     await getCurrentWindow().hide();
   };
 
+  // Fallback resize handle: frameless windows expose no native resize border
+  // on some platforms (notably Linux/GTK), so the grip drives it explicitly.
+  const startResizeDrag = async () => {
+    if (!hasTauri()) return;
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().startResizeDragging("SouthEast");
+  };
+
   return (
     <div className="chat-stage">
       <div className="chat-shell">
         <header className="chat-head" data-tauri-drag-region>
           <span className="chat-head-dot" aria-hidden data-tauri-drag-region />
           <span className="chat-title" data-tauri-drag-region>
-            Sage
+            {companionName}
           </span>
           {settings.backend === "agent_cli" && (
             <button
@@ -144,7 +152,7 @@ export function ChatWindow() {
             className="chat-head-btn"
             title={t("chat.settingsTitle")}
             aria-label={t("chat.settingsTitle")}
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => void openSettingsWindow()}
           >
             ⚙
           </button>
@@ -159,7 +167,12 @@ export function ChatWindow() {
           </button>
         </header>
 
-        <MessageList messages={messages} partial={partial} streaming={streaming} />
+        <MessageList
+          messages={messages}
+          partial={partial}
+          streaming={streaming}
+          onRegenerate={() => void regenerate()}
+        />
 
         {error && (
           <div className="chat-error" role="alert">
@@ -179,14 +192,14 @@ export function ChatWindow() {
           hasKey={keyReady}
           onSend={(text) => void send(text)}
           onStop={stop}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => void openSettingsWindow()}
         />
 
-        <SettingsDialog
-          open={settingsOpen}
-          onClose={() => setSettingsOpen(false)}
-          loadChatModels={loadChatModels}
-          loadObserveModels={loadObserveModels}
+        <div
+          className="chat-resize-grip"
+          title={t("chat.resizeHandle")}
+          aria-hidden
+          onPointerDown={() => void startResizeDrag()}
         />
       </div>
     </div>

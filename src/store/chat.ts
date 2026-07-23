@@ -37,6 +37,12 @@ export interface ChatState {
   error: string | null;
   abort: AbortController | null;
   send: (text: string) => Promise<void>;
+  /**
+   * Drop everything after the last user message (the previous answer, tool
+   * cards included) and run that turn again. No-op mid-stream or when the
+   * history holds no user message (e.g. only a bubble opener).
+   */
+  regenerate: () => Promise<void>;
   /** Load the persisted conversation on startup (no-op mid-stream). */
   hydrate: () => Promise<void>;
   /** A clicked proactive bubble becomes the assistant's opening line (no LLM call). */
@@ -46,17 +52,11 @@ export interface ChatState {
   clear: () => Promise<void>;
 }
 
-export const useChatStore = create<ChatState>()((set, get) => ({
-  messages: [],
-  streaming: false,
-  partial: "",
-  error: null,
-  abort: null,
-
-  async send(text) {
-    const trimmed = text.trim();
-    if (!trimmed || get().streaming) return;
-
+export const useChatStore = create<ChatState>()((set, get) => {
+  // 一輪對話的主體（send / regenerate 共用）：驗證設定 → 組 request →
+  // 串流 → 錯誤處理 → finally 持久化。`messages` 是這輪的完整可見歷史
+  // （已含最後一則 user 訊息），驗證通過後才寫進 store。
+  async function runTurn(messages: ChatMessage[]): Promise<void> {
     const ipc = requireIpc();
     const settings = useSettingsStore.getState().settings;
     const useAgentCli = settings.backend === "agent_cli";
@@ -66,10 +66,6 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       set({ error: i18n.t("errors.noChatModel") });
       return;
     }
-    const messages: ChatMessage[] = [
-      ...get().messages,
-      { role: "user", content: trimmed },
-    ];
     const abort = new AbortController();
     set({ messages, streaming: true, partial: "", error: null, abort });
 
@@ -102,7 +98,10 @@ export const useChatStore = create<ChatState>()((set, get) => ({
     if (observed) prefix.push(observed);
     // 對話歷史送出前先照字元預算尾端截斷（保留最新、丟最舊）：系統前綴不算在
     // 預算內、永遠置頂。持久化保留完整對話在磁碟，這裡只約束「這次上模型」的量。
-    const bounded = truncateHistory(messages);
+    // `ts` 是 UI 專用欄位，送模型前一律剝除。
+    const bounded = truncateHistory(messages).map(
+      ({ ts: _ts, ...message }) => message as ChatMessage,
+    );
     const requestMessages = prefix.length > 0 ? [...prefix, ...bounded] : bounded;
 
     // runAgentLoop 處理整個 function-calling 迴圈：串流→有 tool_calls 就查
@@ -149,7 +148,7 @@ export const useChatStore = create<ChatState>()((set, get) => ({
         onMessage(message) {
           partial = "";
           set((state) => ({
-            messages: [...state.messages, message],
+            messages: [...state.messages, { ...message, ts: Date.now() }],
             partial: "",
           }));
         },
@@ -171,52 +170,87 @@ export const useChatStore = create<ChatState>()((set, get) => ({
       // 寫檔失敗不該冒成聊天錯誤，也不擋 UI。
       void requireIpc().saveSession(get().messages);
     }
-  },
+  }
 
-  async hydrate() {
-    // 啟動時載入已持久化的對話。串流中不覆寫（也順帶擋掉 React strict-mode
-    // 的雙掛載重跑）；沒有存檔或載入失敗就維持空歷史。
-    if (get().streaming) return;
-    try {
-      const messages = await requireIpc().loadSession();
-      set({ messages });
-    } catch {
-      // 沒有存檔（或指令尚未接上）——保持空的。
-    }
-  },
+  return {
+    messages: [],
+    streaming: false,
+    partial: "",
+    error: null,
+    abort: null,
 
-  openFromBubble(text) {
-    const trimmed = text.trim();
-    if (!trimmed || get().streaming) return;
-    set((state) => ({
-      messages: [...state.messages, { role: "assistant", content: trimmed }],
-      error: null,
-    }));
-    // 被點開的冒泡也成了對話的一部分——一併持久化（射後不理）。
-    void requireIpc().saveSession(get().messages);
-  },
+    async send(text) {
+      const trimmed = text.trim();
+      if (!trimmed || get().streaming) return;
+      await runTurn([
+        ...get().messages,
+        { role: "user", content: trimmed, ts: Date.now() },
+      ]);
+    },
 
-  stop() {
-    get().abort?.abort();
-  },
+    async regenerate() {
+      if (get().streaming) return;
+      const messages = get().messages;
+      // 找最後一則 user 訊息；其後的 assistant/tool 訊息全部丟掉重跑。
+      let last = -1;
+      for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].role === "user") {
+          last = i;
+          break;
+        }
+      }
+      if (last < 0) return;
+      await runTurn(messages.slice(0, last + 1));
+    },
 
-  clearError() {
-    set({ error: null });
-  },
+    async hydrate() {
+      // 啟動時載入已持久化的對話。串流中不覆寫（也順帶擋掉 React strict-mode
+      // 的雙掛載重跑）；沒有存檔或載入失敗就維持空歷史。
+      if (get().streaming) return;
+      try {
+        const messages = await requireIpc().loadSession();
+        set({ messages });
+      } catch {
+        // 沒有存檔（或指令尚未接上）——保持空的。
+      }
+    },
 
-  async clear() {
-    // 先中止進行中的串流，再把目前對話歸檔後清空——「清除」不是銷毀歷史，
-    // 而是把它收進封存（設定裡可瀏覽／刪除）。歸檔失敗仍照常清空 UI。
-    get().abort?.abort();
-    try {
-      await requireIpc().archiveSession();
-    } catch {
-      // 沒東西可歸檔（或指令尚未接上）——照樣清空。
-    }
-    set({ messages: [], partial: "", error: null });
-    void requireIpc().saveSession([]);
-  },
-}));
+    openFromBubble(text) {
+      const trimmed = text.trim();
+      if (!trimmed || get().streaming) return;
+      set((state) => ({
+        messages: [
+          ...state.messages,
+          { role: "assistant", content: trimmed, ts: Date.now() },
+        ],
+        error: null,
+      }));
+      // 被點開的冒泡也成了對話的一部分——一併持久化（射後不理）。
+      void requireIpc().saveSession(get().messages);
+    },
+
+    stop() {
+      get().abort?.abort();
+    },
+
+    clearError() {
+      set({ error: null });
+    },
+
+    async clear() {
+      // 先中止進行中的串流，再把目前對話歸檔後清空——「清除」不是銷毀歷史，
+      // 而是把它收進封存（設定裡可瀏覽／刪除）。歸檔失敗仍照常清空 UI。
+      get().abort?.abort();
+      try {
+        await requireIpc().archiveSession();
+      } catch {
+        // 沒東西可歸檔（或指令尚未接上）——照樣清空。
+      }
+      set({ messages: [], partial: "", error: null });
+      void requireIpc().saveSession([]);
+    },
+  };
+});
 
 /** Selector: what should the avatar be doing right now? */
 export function avatarMood(state: ChatState): AvatarMood {
