@@ -25,6 +25,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --leaf-mist: #33402d;
     --ink: #e6ecdf;
     --ink-soft: #a4b09b;
 

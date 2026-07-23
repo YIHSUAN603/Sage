@@ -129,6 +129,7 @@ const LIGHT_VARS: VarSpec[] = [
 ];
 
 const DARK_VARS: VarSpec[] = [
+  { name: "--leaf-mist", sat: 17, light: 21 },
   { name: "--ink", sat: 25, light: 90 },
   { name: "--ink-soft", sat: 12, light: 65 },
   { name: "--bubble-bg", sat: 13, light: 15 },
