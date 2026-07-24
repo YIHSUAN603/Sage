@@ -253,6 +253,6 @@ pub fn set_settings(app: tauri::AppHandle, settings: Settings) -> Result<(), Str
     std::fs::write(path, json).map_err(|e| format!("write settings: {e}"))?;
     // Keep Sage's Claude hook in sync with the coding-agent observation switch.
     // Idempotent, and best-effort: a hook-file problem must never fail the save.
-    let _ = crate::agent_watch::reconcile_claude_hook(&app, settings.observe_agents);
+    let _ = crate::agent_watch::reconcile_claude_hook(&app, &settings);
     Ok(())
 }

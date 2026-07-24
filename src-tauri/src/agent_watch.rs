@@ -490,9 +490,15 @@ fn read_inbox_state(home: &Path, session: &str) -> Option<String> {
 /// Ensure ~/.claude/settings.json has (enabled) or lacks (disabled) Sage's hook
 /// entry in each `HOOK_EVENTS` array — additive and idempotent, touching only
 /// the marked entry so any other tool's hooks are preserved. Called on every
-/// settings save; writes only when something actually changed.
-pub fn reconcile_claude_hook(app: &tauri::AppHandle, enabled: bool) -> Result<(), String> {
-    let home = app.path().home_dir().map_err(|e| e.to_string())?;
+/// settings save; writes only when something actually changed. Under WSL the
+/// hook is installed into the WSL home's `.claude/settings.json` so the coding
+/// agent running inside WSL actually loads it.
+pub fn reconcile_claude_hook(
+    app: &tauri::AppHandle,
+    settings: &crate::settings::Settings,
+) -> Result<(), String> {
+    let enabled = settings.observe_agents;
+    let home = observe_home(app, settings).ok_or("could not resolve home directory")?;
     let path = home.join(".claude").join("settings.json");
 
     // No settings file and nothing to add ⇒ nothing to do. When enabling we
@@ -581,6 +587,63 @@ fn apply_hook(root: &mut Value, enabled: bool) -> bool {
 // Command
 // ---------------------------------------------------------------------------
 
+/// The home directory whose `.claude` / `.codex` / `.sage` trees Sage observes.
+/// Normally the OS home. When `agent_cli_use_wsl` is on (Windows only), the
+/// coding agent runs *inside* WSL and writes its transcripts to the WSL home, so
+/// we resolve that distro's `$HOME` as a `\\wsl.localhost\...` UNC path Sage can
+/// read directly — the same bridging the agent-CLI backend already does.
+fn observe_home(app: &tauri::AppHandle, settings: &crate::settings::Settings) -> Option<PathBuf> {
+    #[cfg(windows)]
+    {
+        if settings.agent_cli_use_wsl {
+            return wsl_home(&settings.agent_cli_wsl_distro);
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = settings;
+    app.path().home_dir().ok()
+}
+
+/// The WSL distro's `$HOME` as a Windows UNC path (e.g.
+/// `\\wsl.localhost\Ubuntu\home\me`), or None if WSL can't be reached. Resolved
+/// via `wsl.exe -- sh -c 'wslpath -w "$HOME"'` and cached per distro — the
+/// activity poller calls this often and spawning wsl.exe each time is wasteful.
+#[cfg(windows)]
+fn wsl_home(distro: &str) -> Option<PathBuf> {
+    use std::os::windows::process::CommandExt;
+    use std::sync::Mutex;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    static CACHE: Mutex<Option<(String, PathBuf)>> = Mutex::new(None);
+
+    if let Ok(cache) = CACHE.lock() {
+        if let Some((d, p)) = cache.as_ref() {
+            if d == distro {
+                return Some(p.clone());
+            }
+        }
+    }
+
+    let mut cmd = std::process::Command::new("wsl.exe");
+    if !distro.is_empty() {
+        cmd.arg("-d").arg(distro);
+    }
+    cmd.arg("--").arg("sh").arg("-c").arg("wslpath -w \"$HOME\"");
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    let output = cmd.output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() {
+        return None;
+    }
+    let pb = PathBuf::from(path);
+    if let Ok(mut cache) = CACHE.lock() {
+        *cache = Some((distro.to_string(), pb.clone()));
+    }
+    Some(pb)
+}
+
 /// Current coding-agent activity, or None when the feature is off, no session
 /// exists, or nothing could be read. Never errors — a companion signal must
 /// degrade to silence, never to a surfaced failure.
@@ -590,7 +653,7 @@ pub fn agent_activity(app: tauri::AppHandle) -> Option<AgentActivity> {
     if !settings.observe_agents {
         return None;
     }
-    let home = app.path().home_dir().ok()?;
+    let home = observe_home(&app, &settings)?;
     activity_from_home(&home)
 }
 
