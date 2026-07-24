@@ -220,6 +220,12 @@ export default {
       state_idle: "ちょうど止まったところ",
       state_waiting_permission: "ユーザーの承認待ち",
       tool: "たった今使ったツール：{{tool}}",
+      action: "今やっていること：{{action}}",
+      action_editing: "ファイルを編集中",
+      action_testing: "テストを実行中",
+      action_reading: "ファイルを読んでいる",
+      action_searching: "コードを検索中",
+      action_executing: "コマンドを実行中",
       recent: "最近のやり取り（古い順）：",
     },
     memory: {

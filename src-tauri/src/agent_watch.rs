@@ -37,6 +37,10 @@ pub struct AgentActivity {
     pub texts: Vec<String>,
     /// Last tool action, human-readable (e.g. "Read /path" / "shell: pwd"), or None.
     pub tool: Option<String>,
+    /// Semantic class of the last tool — "editing" | "testing" | "reading" |
+    /// "searching" | "executing", or None. Lets the companion react to what the
+    /// agent is *doing*, not just whether it's running.
+    pub action: Option<String>,
     /// Transcript mtime, epoch milliseconds — drives the recency state guess and
     /// lets the caller ignore stale sessions.
     pub updated_at: u64,
@@ -52,6 +56,13 @@ const TAIL_BYTES: u64 = 64 * 1024;
 /// A transcript touched this recently, with no clearer signal, is treated as an
 /// in-progress turn.
 const RECENT_MS: u64 = 8_000;
+/// A session touched within this window counts as "active" and is considered
+/// when picking which one drives the pet. Older ones only matter as the
+/// returning-user fallback.
+const ACTIVE_MS: u64 = 300_000;
+/// Cap on active sessions whose tails we read per poll, so a machine with many
+/// recent sessions can't make each poll read an unbounded number of files.
+const MAX_ACTIVE: usize = 8;
 
 // ---------------------------------------------------------------------------
 // Pure parsing (no I/O — unit-tested directly)
@@ -64,6 +75,7 @@ const RECENT_MS: u64 = 8_000;
 struct Parsed {
     texts: Vec<String>,
     tool: Option<String>,
+    action: Option<String>,
     running_hint: Option<bool>,
 }
 
@@ -135,6 +147,40 @@ fn claude_tool_label(block: &Value) -> Option<String> {
     })
 }
 
+/// Semantic class of a Claude tool_use, or None for tools we don't categorize.
+/// Bash is split into testing vs. executing by inspecting the command.
+fn classify_claude_action(name: &str, input: Option<&Value>) -> Option<&'static str> {
+    match name {
+        "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => Some("editing"),
+        "Read" | "NotebookRead" => Some("reading"),
+        "Grep" | "Glob" | "WebFetch" | "WebSearch" => Some("searching"),
+        "Bash" => {
+            let cmd = input
+                .and_then(|i| i.get("command"))
+                .and_then(|c| c.as_str())
+                .unwrap_or("");
+            Some(classify_command_action(cmd))
+        }
+        _ => None,
+    }
+}
+
+/// A shell command is "testing" when it names a known test runner, else
+/// "executing". Matches multi-word tokens so a bare "test" substring (e.g.
+/// "latest") doesn't misfire.
+fn classify_command_action(cmd: &str) -> &'static str {
+    let c = cmd.to_lowercase();
+    const TEST_MARKERS: &[&str] = &[
+        "pytest", "jest", "vitest", "phpunit", "rspec", "cargo test", "npm test",
+        "npm run test", "pnpm test", "yarn test", "go test", "mvn test", "gradle test",
+    ];
+    if TEST_MARKERS.iter().any(|m| c.contains(m)) {
+        "testing"
+    } else {
+        "executing"
+    }
+}
+
 /// Is a Claude line meta noise (mode markers, snapshots, injected caveats,
 /// `isMeta`) rather than real turn content?
 fn claude_is_meta(v: &Value) -> bool {
@@ -158,6 +204,7 @@ fn claude_is_meta(v: &Value) -> bool {
 fn parse_claude(tail: &str) -> Parsed {
     let mut texts: Vec<String> = Vec::new();
     let mut tool: Option<String> = None;
+    let mut action: Option<&'static str> = None;
 
     for line in tail.lines() {
         let line = line.trim();
@@ -178,6 +225,9 @@ fn parse_claude(tail: &str) -> Parsed {
                     if let Some(parts) = content.as_array() {
                         for block in parts {
                             if block.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
+                                if let Some(name) = block.get("name").and_then(|n| n.as_str()) {
+                                    action = classify_claude_action(name, block.get("input"));
+                                }
                                 if let Some(label) = claude_tool_label(block) {
                                     tool = Some(clip(&label));
                                 }
@@ -210,6 +260,7 @@ fn parse_claude(tail: &str) -> Parsed {
     Parsed {
         texts,
         tool,
+        action: action.map(String::from),
         running_hint: None,
     }
 }
@@ -219,6 +270,7 @@ fn parse_claude(tail: &str) -> Parsed {
 fn parse_codex(tail: &str) -> Parsed {
     let mut texts: Vec<String> = Vec::new();
     let mut tool: Option<String> = None;
+    let mut action: Option<&'static str> = None;
     let mut running: Option<bool> = None;
 
     for line in tail.lines() {
@@ -255,6 +307,7 @@ fn parse_codex(tail: &str) -> Parsed {
                 }
             }
             Some("exec_command_end") => {
+                action = Some(classify_command_action(&codex_command_text(payload)));
                 tool = Some(clip(&codex_exec_label(payload)));
             }
             Some("task_started") => running = Some(true),
@@ -267,6 +320,7 @@ fn parse_codex(tail: &str) -> Parsed {
     Parsed {
         texts,
         tool,
+        action: action.map(String::from),
         running_hint: running,
     }
 }
@@ -286,6 +340,27 @@ fn codex_exec_label(payload: &Value) -> String {
         }
     }
     "shell".to_string()
+}
+
+/// The full command text for classification (the whole argv joined), so a test
+/// runner buried in later args ("/bin/zsh -lc 'npm test'") is still detected.
+fn codex_command_text(payload: &Value) -> String {
+    if let Some(cmd) = payload
+        .pointer("/parsed_cmd/0/cmd")
+        .and_then(|c| c.as_str())
+    {
+        return cmd.to_string();
+    }
+    payload
+        .get("command")
+        .and_then(|c| c.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default()
 }
 
 fn keep_last(texts: &mut Vec<String>) {
@@ -336,11 +411,14 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Newest `*.jsonl` directly inside any subdirectory of `~/.claude/projects/`.
-fn newest_claude(home: &Path) -> Option<Candidate> {
+/// All `*.jsonl` directly inside any subdirectory of `~/.claude/projects/`.
+fn collect_claude(home: &Path, out: &mut Vec<Candidate>) {
     let root = home.join(".claude").join("projects");
-    let mut best: Option<Candidate> = None;
-    for project in std::fs::read_dir(&root).ok()?.flatten() {
+    let projects = match std::fs::read_dir(&root) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for project in projects.flatten() {
         if !project.path().is_dir() {
             continue;
         }
@@ -353,23 +431,20 @@ fn newest_claude(home: &Path) -> Option<Candidate> {
             if path.extension().and_then(|e| e.to_str()) != Some("jsonl") {
                 continue;
             }
-            consider(&mut best, "claude", path);
+            push_candidate(out, "claude", path);
         }
     }
-    best
 }
 
-/// Newest `rollout-*.jsonl` under `~/.codex/sessions/` (YYYY/MM/DD nesting).
-fn newest_codex(home: &Path) -> Option<Candidate> {
+/// All `rollout-*.jsonl` under `~/.codex/sessions/` (YYYY/MM/DD nesting).
+fn collect_codex(home: &Path, out: &mut Vec<Candidate>) {
     let root = home.join(".codex").join("sessions");
-    let mut best: Option<Candidate> = None;
-    walk_rollouts(&root, 0, &mut best);
-    best
+    walk_rollouts(&root, 0, out);
 }
 
-/// Bounded recursive walk (sessions/YYYY/MM/DD ⇒ depth 3) collecting the newest
+/// Bounded recursive walk (sessions/YYYY/MM/DD ⇒ depth 3) collecting every
 /// rollout file. The depth cap keeps a pathological tree from being expensive.
-fn walk_rollouts(dir: &Path, depth: usize, best: &mut Option<Candidate>) {
+fn walk_rollouts(dir: &Path, depth: usize, out: &mut Vec<Candidate>) {
     if depth > 4 {
         return;
     }
@@ -380,28 +455,34 @@ fn walk_rollouts(dir: &Path, depth: usize, best: &mut Option<Candidate>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
-            walk_rollouts(&path, depth + 1, best);
+            walk_rollouts(&path, depth + 1, out);
         } else {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if name.starts_with("rollout-") && name.ends_with(".jsonl") {
-                consider(best, "codex", path);
+                push_candidate(out, "codex", path);
             }
         }
     }
 }
 
-/// Keep `path` in `best` if it's newer than the current pick.
-fn consider(best: &mut Option<Candidate>, source: &'static str, path: PathBuf) {
-    let mtime = match mtime_ms(&path) {
-        Some(m) => m,
-        None => return,
-    };
-    if best.as_ref().map(|b| mtime > b.mtime_ms).unwrap_or(true) {
-        *best = Some(Candidate {
+/// Append `path` as a candidate, skipping files whose mtime can't be read.
+fn push_candidate(out: &mut Vec<Candidate>, source: &'static str, path: PathBuf) {
+    if let Some(mtime_ms) = mtime_ms(&path) {
+        out.push(Candidate {
             source,
             path,
-            mtime_ms: mtime,
+            mtime_ms,
         });
+    }
+}
+
+/// How much a state should pull the pet's attention: a permission prompt beats
+/// an in-progress turn beats an idle session.
+fn state_rank(state: &str) -> u8 {
+    match state {
+        "waiting_permission" => 3,
+        "running" => 2,
+        _ => 1,
     }
 }
 
@@ -523,7 +604,23 @@ pub fn reconcile_claude_hook(
         std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     let json = serde_json::to_string_pretty(&root).map_err(|e| e.to_string())?;
-    std::fs::write(&path, json).map_err(|e| e.to_string())
+    write_settings_atomic(&path, &json)
+}
+
+/// Persist settings.json without risking the user's file: refuse to write
+/// through a symlink (don't clobber whatever it targets), back up the prior
+/// contents, then write a sibling temp file and rename it over the target so a
+/// crash mid-write can never leave a truncated settings file.
+fn write_settings_atomic(path: &Path, contents: &str) -> Result<(), String> {
+    if let Ok(meta) = std::fs::symlink_metadata(path) {
+        if meta.file_type().is_symlink() {
+            return Err("~/.claude/settings.json is a symlink; refusing to overwrite".into());
+        }
+        let _ = std::fs::copy(path, path.with_extension("json.sage-bak"));
+    }
+    let tmp = path.with_extension("json.sage-tmp");
+    std::fs::write(&tmp, contents).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, path).map_err(|e| e.to_string())
 }
 
 /// Mutate a parsed settings object to add/remove Sage's hook entry. Pure over
@@ -657,13 +754,10 @@ pub fn agent_activity(app: tauri::AppHandle) -> Option<AgentActivity> {
     activity_from_home(&home)
 }
 
-/// Home-relative core, split out so tests can drive it against a temp dir.
-fn activity_from_home(home: &Path) -> Option<AgentActivity> {
-    let candidate = [newest_claude(home), newest_codex(home)]
-        .into_iter()
-        .flatten()
-        .max_by_key(|c| c.mtime_ms)?;
-
+/// Read + parse one candidate transcript into an `AgentActivity`, resolving its
+/// state (Claude hook inbox is authoritative; Codex/absent falls back to the
+/// format hint + recency). None when the tail can't be read.
+fn read_activity(candidate: &Candidate, home: &Path) -> Option<AgentActivity> {
     let tail = read_tail(&candidate.path)?;
     let parsed = match candidate.source {
         "codex" => parse_codex(&tail),
@@ -677,8 +771,6 @@ fn activity_from_home(home: &Path) -> Option<AgentActivity> {
         .unwrap_or("")
         .to_string();
 
-    // The Claude hook inbox gives an authoritative state for the current
-    // session (Codex has no such hook, so it stays on the recency guess).
     let inbox = if candidate.source == "claude" {
         read_inbox_state(home, &session)
     } else {
@@ -693,8 +785,60 @@ fn activity_from_home(home: &Path) -> Option<AgentActivity> {
         state,
         texts: parsed.texts,
         tool: parsed.tool,
+        action: parsed.action,
         updated_at: candidate.mtime_ms,
     })
+}
+
+/// Home-relative core, split out so tests can drive it against a temp dir.
+///
+/// One pet, but all sessions are scanned: among those touched within ACTIVE_MS
+/// (newest first, capped at MAX_ACTIVE) the pet reflects the one that most needs
+/// attention — waiting_permission > running > idle, newest breaking ties — so a
+/// permission prompt isn't missed just because another session was touched more
+/// recently. When nothing is currently active, fall back to the single newest
+/// transcript so a returning user still sees their last session.
+fn activity_from_home(home: &Path) -> Option<AgentActivity> {
+    let mut candidates: Vec<Candidate> = Vec::new();
+    collect_claude(home, &mut candidates);
+    collect_codex(home, &mut candidates);
+    if candidates.is_empty() {
+        return None;
+    }
+
+    let now = now_ms();
+    let mut active: Vec<&Candidate> = candidates
+        .iter()
+        .filter(|c| now.saturating_sub(c.mtime_ms) < ACTIVE_MS)
+        .collect();
+    active.sort_by(|a, b| b.mtime_ms.cmp(&a.mtime_ms));
+    active.truncate(MAX_ACTIVE);
+
+    let newest = || candidates.iter().max_by_key(|c| c.mtime_ms);
+    if active.is_empty() {
+        return read_activity(newest()?, home);
+    }
+
+    // Pick the highest-priority active session; ties (same state) go to the
+    // newest, which `active` is already sorted to hand us first.
+    let mut best: Option<AgentActivity> = None;
+    for cand in active {
+        let Some(act) = read_activity(cand, home) else {
+            continue;
+        };
+        let wins = match &best {
+            None => true,
+            Some(b) => state_rank(&act.state) > state_rank(&b.state),
+        };
+        if wins {
+            best = Some(act);
+        }
+    }
+    // Every active tail failed to read ⇒ fall back to the newest overall.
+    match best {
+        Some(a) => Some(a),
+        None => read_activity(newest()?, home),
+    }
 }
 
 #[cfg(test)]
@@ -711,8 +855,30 @@ mod tests {
         );
         let p = parse_claude(tail);
         assert_eq!(p.texts, vec!["使用者：fix the build", "助手：On it."]);
-        assert_eq!(p.tool.as_deref(), Some("Read: /tmp/x.rs"));
+        assert_eq!(p.tool.as_deref(), Some("Read: …/x.rs"));
+        assert_eq!(p.action.as_deref(), Some("reading"));
         assert_eq!(p.running_hint, None);
+    }
+
+    #[test]
+    fn claude_classifies_edit_and_test_actions() {
+        let edit = concat!(
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Edit","input":{"file_path":"/tmp/x.rs"}}]}}"#,
+            "\n",
+        );
+        assert_eq!(parse_claude(edit).action.as_deref(), Some("editing"));
+
+        let test = concat!(
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"cargo test --lib"}}]}}"#,
+            "\n",
+        );
+        assert_eq!(parse_claude(test).action.as_deref(), Some("testing"));
+
+        let run = concat!(
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"git status"}}]}}"#,
+            "\n",
+        );
+        assert_eq!(parse_claude(run).action.as_deref(), Some("executing"));
     }
 
     #[test]
@@ -753,6 +919,7 @@ mod tests {
         let p = parse_codex(tail);
         assert_eq!(p.texts, vec!["使用者：why did build fail", "助手：Let me check."]);
         assert_eq!(p.tool.as_deref(), Some("shell: pwd"));
+        assert_eq!(p.action.as_deref(), Some("executing"));
         assert_eq!(p.running_hint, Some(true));
         // The session-meta system prompt must never leak into texts.
         assert!(!p.texts.iter().any(|t| t.contains("SECRET")));
@@ -909,6 +1076,77 @@ mod tests {
         assert_eq!(act.source, "claude");
         assert_eq!(act.session, "sess-1");
         assert_eq!(act.texts, vec!["使用者：hello there"]);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn multi_session_prefers_waiting_over_newer_idle() {
+        let dir = std::env::temp_dir().join(format!("sage-multi-{}", now_ms()));
+        let proj = dir.join(".claude").join("projects").join("p");
+        let sage = dir.join(".sage");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::create_dir_all(&sage).unwrap();
+
+        // Two active sessions: A (written first, so ≤ B's mtime) waits on a
+        // permission prompt; B is idle. Priority must pick A despite B being
+        // at least as recent.
+        std::fs::write(
+            proj.join("sess-A.jsonl"),
+            r#"{"type":"user","message":{"role":"user","content":"do A"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            proj.join("sess-B.jsonl"),
+            r#"{"type":"user","message":{"role":"user","content":"do B"}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            sage.join("agent-events.jsonl"),
+            concat!(
+                "{\"session_id\":\"sess-A\",\"hook_event_name\":\"Notification\"}\n",
+                "{\"session_id\":\"sess-B\",\"hook_event_name\":\"Stop\"}\n",
+            ),
+        )
+        .unwrap();
+
+        let act = activity_from_home(&dir).expect("activity");
+        assert_eq!(act.session, "sess-A");
+        assert_eq!(act.state, "waiting_permission");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn atomic_write_backs_up_and_replaces() {
+        let dir = std::env::temp_dir().join(format!("sage-atomic-{}", now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        std::fs::write(&path, "old").unwrap();
+
+        write_settings_atomic(&path, "new").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(
+            std::fs::read_to_string(path.with_extension("json.sage-bak")).unwrap(),
+            "old"
+        );
+        assert!(!path.with_extension("json.sage-tmp").exists());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_write_refuses_symlink() {
+        let dir = std::env::temp_dir().join(format!("sage-symlink-{}", now_ms()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let real = dir.join("real.json");
+        std::fs::write(&real, "secret").unwrap();
+        let link = dir.join("settings.json");
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+
+        assert!(write_settings_atomic(&link, "attack").is_err());
+        assert_eq!(std::fs::read_to_string(&real).unwrap(), "secret");
 
         std::fs::remove_dir_all(&dir).ok();
     }

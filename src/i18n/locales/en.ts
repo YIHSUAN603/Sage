@@ -222,6 +222,12 @@ export default {
       state_idle: "just stopped",
       state_waiting_permission: "waiting for the user to approve an action",
       tool: "Tool it just used: {{tool}}",
+      action: "What it's doing: {{action}}",
+      action_editing: "editing files",
+      action_testing: "running tests",
+      action_reading: "reading files",
+      action_searching: "searching the code",
+      action_executing: "running a command",
       recent: "Recent exchange (oldest first):",
     },
     memory: {

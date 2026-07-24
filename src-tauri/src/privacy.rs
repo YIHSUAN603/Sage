@@ -55,12 +55,41 @@ static TOKEN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"\b(?:(?:sk|pk|ghp|gho|ghs|ghr|github_pat|xox[a-z])[-_]|eyJ)[A-Za-z0-9_./+-]{8,}")
         .unwrap()
 });
+/// http(s):// and bare www. URLs — redacted whole (may embed tokens/paths).
+static URL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"(?:https?://|www\.)\S+").unwrap());
+/// Filesystem paths reduced to their basename so directory structure (home
+/// dirs, usernames, project names) doesn't leak: UNC (`\\host\a\b`), Windows
+/// drive (`C:\a\b`), and POSIX *absolute* paths of ≥2 segments (`/a/b`).
+/// Deliberately errs toward privacy: a multi-segment *relative* path in prose
+/// (`either/or/neither`) may be partly clipped, but single slashes (`and/or`,
+/// `TCP/IP`) and single-segment paths (`/etc`) are left alone.
+static PATH: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r"\\\\[\w.$-]+(?:\\[\w .@%+~-]+)+|[A-Za-z]:\\(?:[\w .@%+~-]+\\?)+|(?:/[\w.@%+~-]+){2,}/?",
+    )
+    .unwrap()
+});
 
-/// Redact emails, long digit runs, and token-looking strings from any text
-/// (window titles, semantic-snapshot fragments) before it is stored,
-/// broadcast, or sent to a model.
+/// Last non-empty path segment (either separator), prefixed `…/` to mark it as
+/// a redacted path rather than a bare filename.
+fn path_basename(path: &str) -> String {
+    let seg = path
+        .rsplit(['/', '\\'])
+        .find(|s| !s.is_empty())
+        .unwrap_or("");
+    format!("…/{seg}")
+}
+
+/// Redact URLs, filesystem paths (→ basename), emails, long digit runs, and
+/// token-looking strings from any text (window titles, semantic-snapshot
+/// fragments, agent transcript text) before it is stored, broadcast, or sent to
+/// a model. URLs and paths go first so their embedded tokens/digits can't slip
+/// past the later, narrower rules.
 pub fn sanitize_text(text: &str) -> String {
-    let t = EMAIL.replace_all(text, "***");
+    let t = URL.replace_all(text, "***");
+    let t = PATH.replace_all(&t, |c: &regex::Captures| path_basename(&c[0]));
+    let t = EMAIL.replace_all(&t, "***");
     let t = TOKEN.replace_all(&t, "***");
     DIGIT_RUN.replace_all(&t, "***").into_owned()
 }
@@ -121,5 +150,35 @@ mod tests {
     fn sanitize_leaves_ordinary_titles_alone() {
         let t = "capture.rs — Sage — Visual Studio Code";
         assert_eq!(sanitize_text(t), t);
+    }
+
+    #[test]
+    fn sanitize_redacts_urls() {
+        assert_eq!(sanitize_text("see https://example.com/a/b?t=1 now"), "see *** now");
+        assert_eq!(sanitize_text("go to www.example.com/x today"), "go to *** today");
+    }
+
+    #[test]
+    fn sanitize_reduces_paths_to_basename() {
+        assert_eq!(
+            sanitize_text("edit /home/aries/project/Sage/src/x.rs done"),
+            "edit …/x.rs done"
+        );
+        assert_eq!(
+            sanitize_text(r"open C:\Users\me\notes.txt ok"),
+            "open …/notes.txt ok"
+        );
+        assert_eq!(
+            sanitize_text(r"read \\wsl.localhost\Ubuntu\home\me\a.rs"),
+            r"read …/a.rs"
+        );
+    }
+
+    #[test]
+    fn sanitize_leaves_non_paths_alone() {
+        // Single slashes / single-segment paths are not filesystem paths.
+        assert_eq!(sanitize_text("use and/or here"), "use and/or here");
+        assert_eq!(sanitize_text("over TCP/IP only"), "over TCP/IP only");
+        assert_eq!(sanitize_text("touch /etc please"), "touch /etc please");
     }
 }

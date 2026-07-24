@@ -213,6 +213,12 @@ export default {
       state_idle: "剛停下來",
       state_waiting_permission: "在等使用者批准某個動作",
       tool: "它剛動用的工具：{{tool}}",
+      action: "它正在做的事：{{action}}",
+      action_editing: "改檔案",
+      action_testing: "跑測試",
+      action_reading: "讀檔案",
+      action_searching: "搜尋程式碼",
+      action_executing: "執行指令",
       recent: "最近的往來片段（舊到新）：",
     },
     memory: {

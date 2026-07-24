@@ -144,6 +144,14 @@ function renderAgentActivity(agent: AgentActivity): string {
   if (agent.tool) {
     lines.push(i18n.t("agent.tool", { ns: "prompt", tool: agent.tool }));
   }
+  if (agent.action) {
+    lines.push(
+      i18n.t("agent.action", {
+        ns: "prompt",
+        action: i18n.t(`agent.action_${agent.action}`, { ns: "prompt" }),
+      }),
+    );
+  }
   if (agent.texts.length > 0) {
     lines.push(i18n.t("agent.recent", { ns: "prompt" }));
     for (const text of agent.texts) lines.push(`- ${text}`);

@@ -490,6 +490,7 @@ const CLAUDE_WAITING: AgentActivity = {
   state: "waiting_permission",
   texts: ["使用者：fix the failing test", "助手：I'll run the suite."],
   tool: "Bash: npm test",
+  action: "testing",
   updated_at: 1000,
 };
 

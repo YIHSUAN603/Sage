@@ -379,6 +379,9 @@ export interface AgentActivity {
   texts: string[];
   /** Last tool action, human-readable (e.g. "Read: /path", "shell: pwd"), or null. */
   tool: string | null;
+  /** Semantic class of the last tool, letting the companion react to what the
+   * agent is doing rather than only whether it's running. */
+  action: "editing" | "testing" | "reading" | "searching" | "executing" | null;
   /** Transcript mtime, epoch milliseconds. */
   updated_at: number;
 }

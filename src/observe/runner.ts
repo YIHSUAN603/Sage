@@ -281,7 +281,12 @@ export function useObservation(): ObservationHandle {
     // and may stay SILENT; the quota still caps how often it actually bubbles.
     let agentTimer: ReturnType<typeof setTimeout> | null = null;
     let prevAgent: AgentActivity | null = null;
+    // Floor between agent-triggered asks so a session that flaps between states
+    // (or several sessions in quick succession) can't fire back-to-back asks.
+    // Only throttles the reactive trigger — the time-driven cadence is separate.
+    let lastAgentAskAt = 0;
     const AGENT_POLL_MS = import.meta.env.DEV ? 1_500 : 3_000;
+    const AGENT_ASK_COOLDOWN_MS = import.meta.env.DEV ? 5_000 : 15_000;
     const pollAgent = async () => {
       try {
         latestAgent = await ipc.agentActivity();
@@ -290,11 +295,16 @@ export function useObservation(): ObservationHandle {
       }
       const now = latestAgent;
       if (proactive && now && agentTransitionWorthAsking(prevAgent, now)) {
-        const reasonKey =
-          now.state === "waiting_permission"
-            ? "gate.agentWaitingReason"
-            : "gate.agentFinishedReason";
-        void guardedAsk(i18n.t(reasonKey, { ns: "prompt", source: now.source }));
+        if (Date.now() - lastAgentAskAt >= AGENT_ASK_COOLDOWN_MS) {
+          lastAgentAskAt = Date.now();
+          const reasonKey =
+            now.state === "waiting_permission"
+              ? "gate.agentWaitingReason"
+              : "gate.agentFinishedReason";
+          void guardedAsk(i18n.t(reasonKey, { ns: "prompt", source: now.source }));
+        } else {
+          devLog("agent transition within cooldown — skipping reactive ask");
+        }
       }
       prevAgent = now;
       if (stopped) return;
