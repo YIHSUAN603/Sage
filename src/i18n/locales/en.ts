@@ -71,6 +71,10 @@ export default {
       agentCliChecking: "Checking…",
       agentCliDetected: "Detected: {{version}}",
       agentCliMissing: "Not found — install it or set the path above.",
+      agentCliUseWsl: "Run in WSL",
+      agentCliWslDistroPlaceholder: "WSL distro (optional; blank = default distro)",
+      agentCliUseWslHint:
+        "Sage calls the CLI through wsl.exe. Set the path above to the CLI's Linux path inside WSL (e.g. /home/you/.local/bin/claude).",
       agentCliPermission: "Tool permission",
       agentCliPermReadOnly: "Read-only",
       agentCliPermEdit: "Can edit",

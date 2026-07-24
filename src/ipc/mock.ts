@@ -194,8 +194,8 @@ export function createMockIpc(options: MockIpcOptions = {}): MockIpc {
       }
     },
 
-    async checkAgentCli(cli, path) {
-      calls.push({ command: "check_agent_cli", args: { cli, path } });
+    async checkAgentCli(cli, path, useWsl, distro) {
+      calls.push({ command: "check_agent_cli", args: { cli, path, useWsl, distro } });
       return `${cli} (mock)`;
     },
 

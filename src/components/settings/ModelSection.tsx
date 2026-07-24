@@ -58,7 +58,12 @@ export function ModelSection({
     setCliCheck({ status: "checking", text: t("settings.agentCliChecking") });
     const handle = setTimeout(() => {
       requireIpc()
-        .checkAgentCli(draft.agent_cli, draft.agent_cli_path.trim())
+        .checkAgentCli(
+          draft.agent_cli,
+          draft.agent_cli_path.trim(),
+          draft.agent_cli_use_wsl,
+          draft.agent_cli_wsl_distro.trim(),
+        )
         .then(
           (version) =>
             !cancelled &&
@@ -74,7 +79,14 @@ export function ModelSection({
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [useAgentCli, draft.agent_cli, draft.agent_cli_path, t]);
+  }, [
+    useAgentCli,
+    draft.agent_cli,
+    draft.agent_cli_path,
+    draft.agent_cli_use_wsl,
+    draft.agent_cli_wsl_distro,
+    t,
+  ]);
 
   return (
     <>
@@ -122,6 +134,29 @@ export function ModelSection({
               </span>
             )}
           </label>
+
+          <div className="field">
+            <label className="switch-label">
+              <input
+                type="checkbox"
+                checked={draft.agent_cli_use_wsl}
+                onChange={(e) => patch({ agent_cli_use_wsl: e.currentTarget.checked })}
+              />
+              <span>{t("settings.agentCliUseWsl")}</span>
+            </label>
+            {draft.agent_cli_use_wsl && (
+              <>
+                <input
+                  type="text"
+                  value={draft.agent_cli_wsl_distro}
+                  placeholder={t("settings.agentCliWslDistroPlaceholder")}
+                  autoComplete="off"
+                  onChange={(e) => patch({ agent_cli_wsl_distro: e.currentTarget.value })}
+                />
+                <span className="field-hint">{t("settings.agentCliUseWslHint")}</span>
+              </>
+            )}
+          </div>
 
           <label className="field">
             <span>{t("settings.agentCliModel")}</span>

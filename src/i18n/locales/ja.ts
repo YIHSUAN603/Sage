@@ -71,6 +71,10 @@ export default {
       agentCliChecking: "確認中…",
       agentCliDetected: "検出：{{version}}",
       agentCliMissing: "見つかりません — インストールするか、上にパスを指定してください。",
+      agentCliUseWsl: "WSL で実行",
+      agentCliWslDistroPlaceholder: "WSL ディストリビューション（任意；空欄＝既定）",
+      agentCliUseWslHint:
+        "Sage は wsl.exe 経由で CLI を呼び出します。上のパスには WSL 内の CLI の Linux パス（例: /home/you/.local/bin/claude）を指定してください。",
       agentCliPermission: "ツール権限",
       agentCliPermReadOnly: "読み取り専用",
       agentCliPermEdit: "編集可",

@@ -37,8 +37,8 @@ export const realIpc: SageIpc = {
     await invoke(COMMANDS.agentStream, { channel, req });
   },
 
-  checkAgentCli(cli, path): Promise<string> {
-    return invoke(COMMANDS.checkAgentCli, { cli, path });
+  checkAgentCli(cli, path, useWsl, distro): Promise<string> {
+    return invoke(COMMANDS.checkAgentCli, { cli, path, useWsl, distro });
   },
 
   toolReadFile(path: string): Promise<string> {

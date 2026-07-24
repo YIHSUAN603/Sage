@@ -23,6 +23,14 @@ pub struct Settings {
     /// Observation is always read-only regardless of this value.
     #[serde(default = "default_agent_permission")]
     pub agent_cli_permission: String,
+    /// Invoke the agent CLI through `wsl.exe` (Windows only). Lets Sage, a native
+    /// Windows app, reach a claude/codex installed inside WSL. Set the WSL Linux
+    /// path in `agent_cli_path`.
+    #[serde(default)]
+    pub agent_cli_use_wsl: bool,
+    /// WSL distro to run the CLI in when `agent_cli_use_wsl`; empty ⇒ default distro.
+    #[serde(default)]
+    pub agent_cli_wsl_distro: String,
     #[serde(default)]
     pub api_key: String,
     /// Model used for chat + tool calling (must support `tools`).
@@ -126,6 +134,8 @@ impl Default for Settings {
             agent_cli_path: String::new(),
             agent_cli_model: String::new(),
             agent_cli_permission: default_agent_permission(),
+            agent_cli_use_wsl: false,
+            agent_cli_wsl_distro: String::new(),
             api_key: String::new(),
             chat_model: String::new(),
             observe_model: String::new(),

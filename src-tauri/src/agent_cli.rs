@@ -81,6 +81,25 @@ fn sanitize_permission(raw: &str) -> String {
     }
 }
 
+/// The program to spawn plus the args that must precede the CLI's own args.
+/// With `use_wsl`, the CLI is invoked as `wsl.exe [-d <distro>] -- <bin>` so
+/// Sage (a native Windows app) can reach a claude/codex installed inside WSL;
+/// `bin` is then the CLI's Linux path/name. Without it, spawn `bin` directly.
+fn resolve_launch(bin: &str, use_wsl: bool, distro: &str) -> (String, Vec<String>) {
+    if use_wsl {
+        let mut prefix = Vec::new();
+        if !distro.is_empty() {
+            prefix.push("-d".to_string());
+            prefix.push(distro.to_string());
+        }
+        prefix.push("--".to_string());
+        prefix.push(bin.to_string());
+        ("wsl.exe".to_string(), prefix)
+    } else {
+        (bin.to_string(), Vec::new())
+    }
+}
+
 /// What an adapter wants launched: extra argv (after the binary) and an optional
 /// stdin payload (the conversation, as that CLI expects it).
 pub struct Spawn {
@@ -126,14 +145,29 @@ pub async fn agent_stream(
             return Ok(());
         }
     };
-    run(adapter.as_ref(), &settings.agent_cli_path, &req, &channel).await;
+    // WSL bridging only makes sense from native Windows; ignore the flag elsewhere.
+    let use_wsl = settings.agent_cli_use_wsl && cfg!(windows);
+    run(
+        adapter.as_ref(),
+        &settings.agent_cli_path,
+        use_wsl,
+        &settings.agent_cli_wsl_distro,
+        &req,
+        &channel,
+    )
+    .await;
     Ok(())
 }
 
 /// Probe a CLI by running `<bin> --version`. Powers the Settings "detected /
 /// not found" note so a missing binary is caught before the user tries to chat.
 #[tauri::command]
-pub async fn check_agent_cli(cli: String, path: String) -> Result<String, String> {
+pub async fn check_agent_cli(
+    cli: String,
+    path: String,
+    use_wsl: bool,
+    distro: String,
+) -> Result<String, String> {
     let bin = if !path.is_empty() {
         path
     } else {
@@ -143,7 +177,9 @@ pub async fn check_agent_cli(cli: String, path: String) -> Result<String, String
             other => return Err(format!("unknown agent CLI: {other}")),
         }
     };
-    let mut cmd = Command::new(&bin);
+    let (program, prefix) = resolve_launch(&bin, use_wsl && cfg!(windows), &distro);
+    let mut cmd = Command::new(&program);
+    cmd.args(&prefix);
     cmd.arg("--version");
     hide_console(&mut cmd);
     let output = cmd
@@ -151,9 +187,9 @@ pub async fn check_agent_cli(cli: String, path: String) -> Result<String, String
         .await
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
-                format!("{bin} not found")
+                format!("{program} not found")
             } else {
-                format!("failed to run {bin}: {e}")
+                format!("failed to run {program}: {e}")
             }
         })?;
     if output.status.success() {
@@ -173,6 +209,8 @@ fn emit_error(channel: &Channel<AgentStreamEvent>, kind: StreamErrorKind, messag
 async fn run(
     adapter: &(dyn Adapter + Send + Sync),
     configured_path: &str,
+    use_wsl: bool,
+    wsl_distro: &str,
     req: &AgentRequest,
     channel: &Channel<AgentStreamEvent>,
 ) {
@@ -181,10 +219,12 @@ async fn run(
     } else {
         configured_path.to_string()
     };
+    let (program, prefix) = resolve_launch(&bin, use_wsl, wsl_distro);
     let spawn = adapter.build(req);
 
-    let mut cmd = Command::new(&bin);
-    cmd.args(&spawn.args)
+    let mut cmd = Command::new(&program);
+    cmd.args(&prefix)
+        .args(&spawn.args)
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .stdin(if spawn.stdin.is_some() {
@@ -202,13 +242,13 @@ async fn run(
                 emit_error(
                     channel,
                     StreamErrorKind::Auth,
-                    format!("{bin} not found — install it or set its path in Settings"),
+                    format!("{program} not found — install it or set its path in Settings"),
                 );
             } else {
                 emit_error(
                     channel,
                     StreamErrorKind::Api,
-                    format!("failed to launch {bin}: {e}"),
+                    format!("failed to launch {program}: {e}"),
                 );
             }
             return;
@@ -334,4 +374,30 @@ fn collect_image_blocks(messages: &[ChatMessage]) -> Vec<Value> {
         }
     }
     blocks
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_launch;
+
+    #[test]
+    fn no_wsl_spawns_bin_directly() {
+        let (program, prefix) = resolve_launch("claude", false, "");
+        assert_eq!(program, "claude");
+        assert!(prefix.is_empty());
+    }
+
+    #[test]
+    fn wsl_wraps_bin_after_double_dash() {
+        let (program, prefix) = resolve_launch("/home/me/.local/bin/claude", true, "");
+        assert_eq!(program, "wsl.exe");
+        assert_eq!(prefix, vec!["--", "/home/me/.local/bin/claude"]);
+    }
+
+    #[test]
+    fn wsl_with_distro_inserts_flag_before_double_dash() {
+        let (program, prefix) = resolve_launch("codex", true, "Ubuntu");
+        assert_eq!(program, "wsl.exe");
+        assert_eq!(prefix, vec!["-d", "Ubuntu", "--", "codex"]);
+    }
 }

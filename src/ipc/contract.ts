@@ -28,6 +28,14 @@ export interface Settings {
    * arbitrary commands; "full": everything, including shell commands.
    */
   agent_cli_permission: "read_only" | "edit" | "full";
+  /**
+   * Invoke the agent CLI through `wsl.exe` (Windows only) so Sage, a native
+   * Windows app, can reach a claude/codex installed inside WSL. Put the WSL
+   * Linux path in `agent_cli_path`.
+   */
+  agent_cli_use_wsl: boolean;
+  /** WSL distro to run the CLI in when agent_cli_use_wsl; empty ⇒ default distro. */
+  agent_cli_wsl_distro: string;
   api_key: string;
   /** Model used for chat + tool calling (must support `tools`). */
   chat_model: string;
@@ -105,6 +113,8 @@ export const DEFAULT_SETTINGS: Settings = {
   agent_cli_path: "",
   agent_cli_model: "",
   agent_cli_permission: "read_only",
+  agent_cli_use_wsl: false,
+  agent_cli_wsl_distro: "",
   api_key: "",
   chat_model: "",
   observe_model: "",
@@ -436,7 +446,12 @@ export interface SageIpc {
    * Probe an agent CLI (`<bin> --version`). Resolves with its version string, or
    * rejects when the binary can't be found/run. `path` empty ⇒ resolve on PATH.
    */
-  checkAgentCli(cli: AgentRequest["cli"], path: string): Promise<string>;
+  checkAgentCli(
+    cli: AgentRequest["cli"],
+    path: string,
+    useWsl: boolean,
+    distro: string,
+  ): Promise<string>;
   /** Read a local UTF-8 file (≤256KB). Rejects with a message on failure. */
   toolReadFile(path: string): Promise<string>;
   /** Installed skills' metadata (scans <config_dir>/skills/, creating it if needed). */

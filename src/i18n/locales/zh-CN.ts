@@ -70,6 +70,10 @@ export default {
       agentCliChecking: "检查中…",
       agentCliDetected: "已检测到：{{version}}",
       agentCliMissing: "找不到——请先安装，或在上方填入路径。",
+      agentCliUseWsl: "在 WSL 中运行",
+      agentCliWslDistroPlaceholder: "WSL 发行版（选填；留空＝默认发行版）",
+      agentCliUseWslHint:
+        "Sage 会通过 wsl.exe 调用 CLI。请将上方路径填成 CLI 在 WSL 里的 Linux 路径（例如 /home/you/.local/bin/claude）。",
       agentCliPermission: "工具权限",
       agentCliPermReadOnly: "只读",
       agentCliPermEdit: "可编辑",
